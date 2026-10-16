@@ -1,0 +1,2205 @@
+<!DOCTYPE html>
+<html lang="de" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Thronglets: Echoes of the Creator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+    <style>
+        * {
+            user-select: none;
+            -webkit-user-select: none;
+            box-sizing: border-box;
+        }
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #020617;
+            font-family: 'Inter', sans-serif;
+            color: #f8fafc;
+        }
+        .font-display {
+            font-family: 'Fredoka', sans-serif;
+        }
+        .font-mono {
+            font-family: 'JetBrains Mono', monospace;
+        }
+        #canvas-container {
+            position: fixed;
+            inset: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 1;
+        }
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+        .glass-panel {
+            background: rgba(15, 23, 42, 0.82);
+            backdrop-filter: blur(14px);
+            -webkit-backdrop-filter: blur(14px);
+            border: 1px solid rgba(148, 163, 184, 0.2);
+            box-shadow: 0 12px 32px -4px rgba(0, 0, 0, 0.6);
+        }
+        .btn-game {
+            transition: all 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+        .btn-game:hover:not(:disabled) {
+            transform: translateY(-2px);
+        }
+        .btn-game:active:not(:disabled) {
+            transform: translateY(1px) scale(0.97);
+        }
+        .tool-active {
+            border-color: #22d3ee !important;
+            background: rgba(6, 182, 212, 0.25) !important;
+            box-shadow: 0 0 18px rgba(34, 211, 238, 0.35);
+        }
+        .custom-scroll::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        .custom-scroll::-webkit-scrollbar-track {
+            background: rgba(15, 23, 42, 0.4);
+            border-radius: 8px;
+        }
+        .custom-scroll::-webkit-scrollbar-thumb {
+            background: rgba(100, 116, 139, 0.5);
+            border-radius: 8px;
+        }
+        @keyframes floatBubble {
+            0% { transform: translate(-50%, -100%) scale(0.85); opacity: 0; }
+            15% { transform: translate(-50%, -115%) scale(1); opacity: 1; }
+            85% { transform: translate(-50%, -125%) scale(1); opacity: 1; }
+            100% { transform: translate(-50%, -140%) scale(0.9); opacity: 0; }
+        }
+        .speech-bubble {
+            position: absolute;
+            pointer-events: none;
+            transform: translate(-50%, -115%);
+            animation: floatBubble 3.4s ease-out forwards;
+            white-space: nowrap;
+            z-index: 15;
+        }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-100">
+
+    <div id="canvas-container"></div>
+    <div id="speech-container" class="fixed inset-0 pointer-events-none z-10 overflow-hidden"></div>
+
+    <div class="fixed inset-x-0 top-0 z-20 p-2 sm:p-3 pointer-events-none flex flex-col gap-2">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+            <!-- Left: Brand & Resources -->
+            <div class="glass-panel rounded-2xl px-3 py-2 flex flex-wrap items-center gap-2 sm:gap-3.5 pointer-events-auto">
+                <div class="flex items-center gap-2 pr-2 border-r border-slate-700/80">
+                    <div class="w-8 h-8 rounded-xl bg-cyan-500/20 border border-cyan-400/40 flex items-center justify-center text-cyan-300">
+                        <i class="ph-fill ph-planet text-lg"></i>
+                    </div>
+                    <div>
+                        <div class="flex items-center gap-1.5">
+                            <span class="font-display font-bold text-xs sm:text-sm tracking-wide text-white">THRONGLETS</span>
+                            <span id="era-badge" class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-400/30">EP. I</span>
+                        </div>
+                        <div id="doctrine-label" class="text-[10px] text-slate-400">Hüter der Harmonie</div>
+                    </div>
+                </div>
+
+                <!-- Resource Counters -->
+                <div class="flex flex-wrap items-center gap-2.5 sm:gap-4 text-xs font-mono">
+                    <div class="flex items-center gap-1" title="Bevölkerung / Wohnraum-Limit (benötigt Straßenanbindung!)">
+                        <i class="ph-fill ph-users-three text-cyan-400 text-sm"></i>
+                        <span id="res-pop" class="font-bold text-white">0/2</span>
+                    </div>
+                    <div class="flex items-center gap-1" title="Holz">
+                        <i class="ph-fill ph-tree-evergreen text-amber-500 text-sm"></i>
+                        <span id="res-wood" class="font-bold text-amber-200">140</span>
+                    </div>
+                    <div class="flex items-center gap-1" title="Stein">
+                        <i class="ph-fill ph-mountains text-slate-300 text-sm"></i>
+                        <span id="res-stone" class="font-bold text-slate-200">100</span>
+                    </div>
+                    <div class="flex items-center gap-1" title="Eisen">
+                        <i class="ph-fill ph-hexagon text-indigo-400 text-sm"></i>
+                        <span id="res-iron" class="font-bold text-indigo-200">25</span>
+                    </div>
+                    <div class="flex items-center gap-1" title="Nahrung">
+                        <i class="ph-fill ph-grains text-emerald-400 text-sm"></i>
+                        <span id="res-food" class="font-bold text-emerald-200">160</span>
+                    </div>
+                    <div class="flex items-center gap-1" title="Wasser">
+                        <i class="ph-fill ph-drop text-sky-400 text-sm"></i>
+                        <span id="res-water" class="font-bold text-sky-200">125</span>
+                    </div>
+                    <div class="flex items-center gap-1" title="Erkenntnis (Forschung)">
+                        <i class="ph-fill ph-sparkle text-purple-400 text-sm"></i>
+                        <span id="res-knowledge" class="font-bold text-purple-200">35</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right: Menu, Time, Weather & Speed -->
+            <div class="glass-panel rounded-2xl px-3 py-2 flex items-center gap-2 pointer-events-auto">
+                <button onclick="openMainMenu(true)" class="btn-game bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-400/40 text-cyan-200 px-2.5 py-1.5 rounded-xl flex items-center gap-1.5 text-xs font-semibold" title="Hauptmenü & Speichern/Laden">
+                    <i class="ph-bold ph-list text-base"></i>
+                    <span class="hidden sm:inline">Menü / Speichern</span>
+                </button>
+
+                <div id="time-badge" class="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-slate-900/90 border border-slate-700/80 text-xs font-mono">
+                    <i id="time-icon" class="ph-fill ph-sun text-amber-400 text-sm"></i>
+                    <span id="time-clock">08:00</span>
+                </div>
+
+                <div id="weather-badge" class="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-slate-900/90 border border-slate-700/80 text-xs">
+                    <i id="weather-icon" class="ph-fill ph-sun text-amber-400 text-sm"></i>
+                    <span id="weather-name" class="font-medium text-slate-200">Sonnig</span>
+                </div>
+
+                <div class="flex items-center bg-slate-900/90 rounded-xl p-0.5 border border-slate-700/80">
+                    <button onclick="setGameSpeed(1)" id="spd-1" class="px-2 py-1 rounded-lg text-xs font-mono bg-cyan-500/30 text-cyan-200 font-bold">1x</button>
+                    <button onclick="setGameSpeed(2)" id="spd-2" class="px-2 py-1 rounded-lg text-xs font-mono text-slate-400 hover:text-white">2x</button>
+                    <button onclick="setGameSpeed(4)" id="spd-4" class="px-2 py-1 rounded-lg text-xs font-mono text-slate-400 hover:text-white">4x</button>
+                </div>
+
+                <button onclick="openModal('tech-modal')" class="btn-game px-2.5 py-1.5 rounded-xl bg-purple-500/20 hover:bg-purple-500/30 border border-purple-400/40 text-purple-200 text-xs font-semibold flex items-center gap-1">
+                    <i class="ph-fill ph-flask text-sm"></i>
+                    <span class="hidden lg:inline">Forschung</span>
+                </button>
+
+                <button onclick="openModal('ach-modal')" class="btn-game px-2.5 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-400/40 text-amber-200 text-xs font-semibold flex items-center gap-1">
+                    <i class="ph-fill ph-trophy text-sm"></i>
+                    <span id="ach-count" class="font-mono">0/15</span>
+                </button>
+
+                <button onclick="resetCamera()" class="btn-game w-8 h-8 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 flex items-center justify-center text-slate-300" title="Kamera zentrieren">
+                    <i class="ph-bold ph-compass text-sm"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- Secondary Row: Event Log & Inspector -->
+        <div class="flex items-start justify-between gap-2">
+            <div id="event-log" class="glass-panel rounded-2xl px-3 py-1.5 max-w-md pointer-events-auto text-[11px] space-y-0.5 max-h-20 overflow-y-auto custom-scroll">
+                <div class="text-cyan-300 font-medium">✨ Willkommen, Schöpfer! Deine Thronglets erwarten deine Führung.</div>
+            </div>
+
+            <!-- Selected Entity Inspector -->
+            <div id="inspector-panel" class="hidden glass-panel rounded-2xl p-3 w-72 pointer-events-auto border border-cyan-500/40">
+                <div class="flex items-center justify-between mb-1.5">
+                    <span id="insp-title" class="font-display font-bold text-sm text-white">Auswahl</span>
+                    <button onclick="closeInspector()" class="text-slate-400 hover:text-white"><i class="ph-bold ph-x text-xs"></i></button>
+                </div>
+                <div id="insp-body" class="text-xs text-slate-300 space-y-1.5"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="fixed inset-x-0 bottom-0 z-20 p-2 sm:p-3 pointer-events-none flex flex-col items-center gap-2">
+        <!-- Category Tabs -->
+        <div class="glass-panel rounded-2xl p-1 flex items-center gap-1 pointer-events-auto">
+            <button onclick="setBuildCategory('god')" id="cat-god" class="px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 bg-cyan-500/25 text-cyan-200 border border-cyan-400/40">
+                <i class="ph-fill ph-hand-palm"></i> Göttliche Macht & Natur
+            </button>
+            <button onclick="setBuildCategory('roads')" id="cat-roads" class="px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 text-slate-300 hover:text-white">
+                <i class="ph-fill ph-path"></i> Wege & Wasserbau
+            </button>
+            <button onclick="setBuildCategory('buildings')" id="cat-buildings" class="px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 text-slate-300 hover:text-white">
+                <i class="ph-fill ph-buildings"></i> Siedlungsbau
+            </button>
+        </div>
+
+        <!-- Dynamic Tool Bar -->
+        <div id="toolbar-items" class="glass-panel rounded-2xl p-2 flex items-center gap-2 overflow-x-auto max-w-full pointer-events-auto custom-scroll">
+            <!-- Populated via JS -->
+        </div>
+    </div>
+
+    <!-- RESEARCH MODAL -->
+    <div id="tech-modal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 hidden items-center justify-center p-4">
+        <div class="glass-panel rounded-3xl max-w-3xl w-full max-h-[82vh] flex flex-col border border-purple-500/40 overflow-hidden">
+            <div class="p-5 border-b border-slate-800 flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-2xl bg-purple-500/20 border border-purple-400/40 flex items-center justify-center text-purple-300">
+                        <i class="ph-fill ph-flask text-2xl"></i>
+                    </div>
+                    <div>
+                        <h2 class="font-display text-lg font-bold text-white">Archiv der Erkenntnis (Forschungszweige)</h2>
+                        <p class="text-xs text-slate-400">Schalte neue Gebäude, Nahrungszweige und Epochen frei</p>
+                    </div>
+                </div>
+                <button onclick="closeModal('tech-modal')" class="w-9 h-9 rounded-xl bg-slate-800 hover:bg-slate-700 flex items-center justify-center text-slate-300">
+                    <i class="ph-bold ph-x"></i>
+                </button>
+            </div>
+            <div id="tech-list" class="p-5 overflow-y-auto grid grid-cols-1 md:grid-cols-2 gap-3 custom-scroll"></div>
+        </div>
+    </div>
+
+    <!-- ACHIEVEMENTS MODAL -->
+    <div id="ach-modal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 hidden items-center justify-center p-4">
+        <div class="glass-panel rounded-3xl max-w-2xl w-full max-h-[82vh] flex flex-col border border-amber-500/40 overflow-hidden">
+            <div class="p-5 border-b border-slate-800 flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-2xl bg-amber-500/20 border border-amber-400/40 flex items-center justify-center text-amber-300">
+                        <i class="ph-fill ph-trophy text-2xl"></i>
+                    </div>
+                    <div>
+                        <h2 class="font-display text-lg font-bold text-white">Meilensteine der Schöpfung</h2>
+                        <p class="text-xs text-slate-400">Deine Errungenschaften als Hüter der Thronglets</p>
+                    </div>
+                </div>
+                <button onclick="closeModal('ach-modal')" class="w-9 h-9 rounded-xl bg-slate-800 hover:bg-slate-700 flex items-center justify-center text-slate-300">
+                    <i class="ph-bold ph-x"></i>
+                </button>
+            </div>
+            <div id="ach-list" class="p-5 overflow-y-auto grid grid-cols-1 md:grid-cols-2 gap-3 custom-scroll"></div>
+        </div>
+    </div>
+
+    <!-- MAIN MENU & SAVE/LOAD MODAL -->
+    <div id="main-menu-modal" class="fixed inset-0 bg-slate-950/85 backdrop-blur-lg z-50 flex items-center justify-center p-4">
+        <div class="glass-panel rounded-3xl max-w-xl w-full border border-cyan-500/40 overflow-hidden shadow-2xl">
+            <div class="p-6 bg-gradient-to-br from-cyan-950/80 via-slate-900 to-purple-950/60 border-b border-slate-800 text-center relative">
+                <div class="w-14 h-14 mx-auto mb-3 rounded-2xl bg-cyan-500/20 border border-cyan-400/50 flex items-center justify-center text-cyan-300 shadow-lg shadow-cyan-500/20">
+                    <i class="ph-fill ph-planet text-3xl"></i>
+                </div>
+                <h1 class="font-display text-2xl font-bold tracking-wider text-white">THRONGLETS</h1>
+                <p class="text-xs text-cyan-300 uppercase tracking-widest font-semibold mt-0.5">Echoes of the Creator • 3D Götter-Simulation</p>
+                <button id="close-menu-btn" onclick="resumeGame()" class="hidden absolute top-4 right-4 w-9 h-9 rounded-xl bg-slate-800/80 hover:bg-slate-700 flex items-center justify-center text-slate-300">
+                    <i class="ph-bold ph-x"></i>
+                </button>
+            </div>
+
+            <div class="p-6 space-y-5 max-h-[75vh] overflow-y-auto custom-scroll">
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <button id="btn-resume-game" onclick="resumeGame()" class="hidden btn-game col-span-1 sm:col-span-2 py-3.5 px-5 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white font-display font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/25">
+                        <i class="ph-fill ph-play text-lg"></i> Laufendes Spiel fortsetzen
+                    </button>
+                    <button onclick="startNewGame()" class="btn-game col-span-1 sm:col-span-2 py-3.5 px-5 rounded-2xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-display font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-cyan-600/25">
+                        <i class="ph-fill ph-sparkle text-lg"></i> Neues Spiel starten (Neue Welt generieren)
+                    </button>
+                </div>
+
+                <!-- Save / Load Slots -->
+                <div class="border-t border-slate-800 pt-4">
+                    <div class="flex items-center justify-between mb-3">
+                        <span class="text-xs font-display font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
+                            <i class="ph-fill ph-floppy-disk text-cyan-400 text-base"></i> Spielstände (Speichern & Laden)
+                        </span>
+                        <span id="save-status-badge" class="text-[11px] text-emerald-400 font-mono">Bereit</span>
+                    </div>
+                    <div id="save-slots-container" class="space-y-2.5"></div>
+                </div>
+
+                <!-- Export / Import Savegame String -->
+                <div class="border-t border-slate-800 pt-4">
+                    <div class="text-xs font-display font-bold uppercase tracking-wider text-slate-400 mb-2 flex items-center gap-1.5">
+                        <i class="ph-bold ph-code text-purple-400"></i> Spielstand-Code (Export / Import)
+                    </div>
+                    <div class="flex gap-2">
+                        <input id="save-code-input" type="text" placeholder="Spielstand-Code hier einfügen zum Laden..." class="flex-1 bg-slate-900/90 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-200 font-mono focus:outline-none focus:border-cyan-400" />
+                        <button onclick="exportSaveCode()" class="btn-game px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-300 text-xs font-semibold border border-slate-700 whitespace-nowrap">
+                            <i class="ph-bold ph-copy"></i> Export
+                        </button>
+                        <button onclick="importSaveCode()" class="btn-game px-3 py-2 rounded-xl bg-purple-600/80 hover:bg-purple-500 text-white text-xs font-semibold whitespace-nowrap">
+                            <i class="ph-bold ph-download-simple"></i> Laden
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        window.cloudStore = {
+            slots: { 1: null, 2: null, 3: null }
+        };
+
+        // Load from localStorage first for instant reliability
+        try {
+            for (let s = 1; s <= 3; s++) {
+                const raw = localStorage.getItem('thronglets_slot_' + s);
+                if (raw) window.cloudStore.slots[s] = JSON.parse(raw);
+            }
+        } catch (e) {
+            console.warn("Local slot read warning:", e);
+        }
+
+        window.saveSlotToCloud = async function(slotNum, saveObj) {
+            window.cloudStore.slots[slotNum] = saveObj;
+            try {
+                localStorage.setItem('thronglets_slot_' + slotNum, JSON.stringify(saveObj));
+            } catch (e) {
+                console.warn("Local slot write warning:", e);
+            }
+            if (window.renderSaveSlotsUI) window.renderSaveSlotsUI();
+            return true;
+        };
+    </script>
+
+    <script>
+        const GRID_SIZE = 22;
+        const TILE_SIZE = 2.0;
+
+        const WEATHER_TYPES = [
+            { id: 'sunny', name: 'Sonnig', icon: 'ph-sun', color: 'text-amber-400', speedMod: 1.0, cropMod: 1.0, waterGen: 0, fog: 0x0f172a },
+            { id: 'rain', name: 'Regenschauer', icon: 'ph-cloud-rain', color: 'text-sky-400', speedMod: 0.85, cropMod: 1.4, waterGen: 1.5, fog: 0x091326 },
+            { id: 'heatwave', name: 'Hitzewelle', icon: 'ph-thermometer-hot', color: 'text-orange-400', speedMod: 0.9, cropMod: 0.65, waterGen: -1.0, fog: 0x1e1b18 },
+            { id: 'frost', name: 'Froststurm', icon: 'ph-snowflake', color: 'text-cyan-300', speedMod: 0.7, cropMod: 0.3, waterGen: 0, fog: 0x0c192c }
+        ];
+
+        const BUILDINGS = {
+            // Roads & Water Infrastructure
+            dirt_path: {
+                name: 'Trampelpfad', icon: 'ph-footprints', isRoad: true, roadTier: 1,
+                cost: { wood: 2, stone: 0, iron: 0 }, desc: '+25% Lauftempo, bindet Gebäude an'
+            },
+            gravel_road: {
+                name: 'Schotterweg', icon: 'ph-path', isRoad: true, roadTier: 2,
+                cost: { wood: 0, stone: 4, iron: 0 }, desc: '+50% Lauftempo, solide Straße'
+            },
+            paved_road: {
+                name: 'Pflasterstraße', icon: 'ph-road-horizon', isRoad: true, roadTier: 3, reqTech: 'masonry',
+                cost: { wood: 0, stone: 8, iron: 1 }, desc: '+85% Lauftempo, mit Bordstein'
+            },
+            wood_bridge: {
+                name: 'Holzbrücke', icon: 'ph-bridge', isBridge: true,
+                cost: { wood: 14, stone: 4, iron: 0 }, desc: 'Überquert Flüsse & Seen (automatische Geländer)'
+            },
+            // Settlement Buildings
+            tent: {
+                name: 'Stammeszelt', icon: 'ph-tent', popCap: 3,
+                cost: { wood: 18, stone: 4, iron: 0 }, desc: '+3 Wohnraum (benötigt Weg)'
+            },
+            hut: {
+                name: 'Blockhütte', icon: 'ph-house-line', popCap: 5, reqTech: 'carpentry',
+                cost: { wood: 32, stone: 18, iron: 0 }, desc: '+5 Wohnraum & Kaminwärme'
+            },
+            modern_house: {
+                name: 'Residenz', icon: 'ph-buildings', popCap: 9, reqTech: 'architecture',
+                cost: { wood: 45, stone: 55, iron: 18 }, desc: '+9 Wohnraum, hohe Lebensqualität'
+            },
+            well: {
+                name: 'Tiefbrunnen', icon: 'ph-drop', prod: { water: 2.2 },
+                cost: { wood: 12, stone: 24, iron: 0 }, desc: 'Fördert kontinuierlich Trinkwasser'
+            },
+            farm: {
+                name: 'Ackerfeld', icon: 'ph-plant', prod: { food: 2.6 },
+                cost: { wood: 16, stone: 6, iron: 0 }, desc: 'Erzeugt Nahrung (Bonus neben Wasser/Mühle)'
+            },
+            fisher_hut: {
+                name: 'Fischerhütte', icon: 'ph-fish-simple', prod: { food: 3.4 }, reqTech: 'fishing', nearWater: true,
+                cost: { wood: 26, stone: 10, iron: 0 }, desc: 'Muss am Ufer stehen. Reiche Fischbeute'
+            },
+            windmill: {
+                name: 'Windmühle', icon: 'ph-wind', prod: { food: 3.0 }, reqTech: 'milling',
+                cost: { wood: 38, stone: 28, iron: 4 }, desc: '+3 Nahrung & +40% Bonus für nahe Felder'
+            },
+            bakery: {
+                name: 'Dorfbäckerei', icon: 'ph-bread', prod: { food: 5.2 }, reqTech: 'baking',
+                cost: { wood: 35, stone: 42, iron: 8 }, desc: 'Backt nahrhaftes Brot für die Siedlung'
+            },
+            granary: {
+                name: 'Kornspeicher', icon: 'ph-barn', prod: { food: 2.0 }, reqTech: 'pottery',
+                cost: { wood: 28, stone: 22, iron: 0 }, desc: 'Schützt Vorräte und steigert Nahrung'
+            },
+            lumber_camp: {
+                name: 'Sägewerk', icon: 'ph-axe', prod: { wood: 2.4 }, reqTech: 'carpentry',
+                cost: { wood: 24, stone: 16, iron: 2 }, desc: 'Verarbeitet Holzstämme effizient'
+            },
+            quarry: {
+                name: 'Steinmetz', icon: 'ph-hammer', prod: { stone: 2.2, iron: 0.6 }, reqTech: 'masonry',
+                cost: { wood: 28, stone: 25, iron: 4 }, desc: 'Gewinnt Bausteine und Roheisen'
+            },
+            forge: {
+                name: 'Eisenschmiede', icon: 'ph-fire', prod: { iron: 2.2 }, reqTech: 'metallurgy',
+                cost: { wood: 30, stone: 45, iron: 10 }, desc: 'Schmilzt hochwertiges Eisen'
+            },
+            herbalist: {
+                name: 'Kräuterheiler', icon: 'ph-first-aid-kit', isHealer: true, reqTech: 'herbalism',
+                cost: { wood: 26, stone: 20, iron: 2 }, desc: 'Heilt kranke Thronglets automatisch'
+            },
+            market: {
+                name: 'Marktplatz', icon: 'ph-storefront', prod: { food: 1.8, knowledge: 1.2 }, reqTech: 'trade',
+                cost: { wood: 40, stone: 35, iron: 6 }, desc: 'Zentrum für Austausch & Lebensfreude'
+            },
+            lantern: {
+                name: 'Straßenlaterne', icon: 'ph-lamp-pendant', prod: { knowledge: 0.4 },
+                cost: { wood: 8, stone: 8, iron: 2 }, desc: 'Erhellt die Nacht rund um Wege'
+            },
+            greenhouse: {
+                name: 'Bio-Gewächshaus', icon: 'ph-leaf', prod: { food: 6.5, water: 1.0 }, reqTech: 'hydroponics',
+                cost: { wood: 40, stone: 50, iron: 22 }, desc: 'Wetterunabhängige High-Tech Ernte'
+            },
+            academy: {
+                name: 'Akademie', icon: 'ph-graduation-cap', prod: { knowledge: 2.8 }, reqTech: 'philosophy',
+                cost: { wood: 45, stone: 55, iron: 14 }, desc: 'Erzeugt Erkenntnis für neue Epochen'
+            },
+            synth_core: {
+                name: 'Synthese-Kern', icon: 'ph-atom', prod: { wood: 3.5, stone: 3.5, iron: 2.5, food: 4.5, knowledge: 3.5 }, reqTech: 'enlightenment',
+                cost: { wood: 80, stone: 90, iron: 45 }, desc: 'Vollautomatischer Quanten-Replikator'
+            }
+        };
+
+        const TECH_TREE = [
+            { id: 'fishing', branch: 'Nahrung', era: 'EP. I', name: 'Reusenfischerei', cost: 25, desc: 'Schaltet die Fischerhütte an Fluss- und Seeufern frei.', unlocked: false },
+            { id: 'pottery', branch: 'Nahrung', era: 'EP. I', name: 'Keramik & Vorräte', cost: 30, desc: 'Schaltet den Kornspeicher zur sicheren Lagerung frei.', unlocked: false },
+            { id: 'carpentry', branch: 'Handwerk', era: 'EP. II', name: 'Zimmermannskunst', cost: 40, desc: 'Schaltet warme Blockhütten und das Sägewerk frei.', unlocked: false },
+            { id: 'herbalism', branch: 'Gesellschaft', era: 'EP. II', name: 'Kräuterkunde', cost: 45, desc: 'Schaltet den Kräuterheiler gegen Frostfieber & Grippe frei.', unlocked: false },
+            { id: 'masonry', branch: 'Handwerk', era: 'EP. II', name: 'Steinmetzkunst', cost: 55, desc: 'Schaltet Pflasterstraßen und den Steinmetz-Betrieb frei.', unlocked: false },
+            { id: 'milling', branch: 'Nahrung', era: 'EP. III', name: 'Windkraft & Mühlen', cost: 70, desc: 'Schaltet die Windmühle frei, die umliegende Felder stärkt.', unlocked: false },
+            { id: 'baking', branch: 'Nahrung', era: 'EP. III', name: 'Backkunst', cost: 85, desc: 'Schaltet die Dorfbäckerei für reiche Brotproduktion frei.', unlocked: false },
+            { id: 'metallurgy', branch: 'Industrie', era: 'EP. III', name: 'Hochofen-Metallurgie', cost: 95, desc: 'Schaltet die Eisenschmiede frei.', unlocked: false },
+            { id: 'trade', branch: 'Gesellschaft', era: 'EP. III', name: 'Handelsnetzwerk', cost: 110, desc: 'Schaltet den belebten Marktplatz frei.', unlocked: false },
+            { id: 'philosophy', branch: 'Gesellschaft', era: 'EP. IV', name: 'Schöpfer-Philosophie', cost: 135, desc: 'Schaltet die Akademie zur raschen Forschung frei.', unlocked: false },
+            { id: 'architecture', branch: 'Handwerk', era: 'EP. IV', name: 'Moderne Architektur', cost: 165, desc: 'Schaltet große Residenzen (+9 Wohnraum) frei.', unlocked: false },
+            { id: 'hydroponics', branch: 'Nahrung', era: 'EP. V', name: 'Hydrokultur-Kuppeln', cost: 210, desc: 'Schaltet das wetterunabhängige Bio-Gewächshaus frei.', unlocked: false },
+            { id: 'enlightenment', branch: 'Industrie', era: 'EP. V', name: 'Kollektive Erleuchtung', cost: 280, desc: 'Schaltet den vollautomatischen Synthese-Kern frei.', unlocked: false }
+        ];
+
+        const ACHIEVEMENTS = [
+            { id: 'first_road', name: 'Wegebauer', desc: 'Baue deinen ersten Pfad oder deine erste Straße.', done: false },
+            { id: 'bridge_builder', name: 'Brückenschlag', desc: 'Errichte eine Holzbrücke über tiefes Wasser.', done: false },
+            { id: 'pop_10', name: 'Wachsende Schar', desc: 'Erreiche eine Bevölkerung von 10 Thronglets.', done: false },
+            { id: 'pop_20', name: 'Blühende Kolonie', desc: 'Erreiche eine Bevölkerung von 20 Thronglets.', done: false },
+            { id: 'forester', name: 'Hüter des Waldes', desc: 'Forste 3 neue Waldstücke auf.', done: false },
+            { id: 'divine_hand', name: 'Gütiger Schöpfer', desc: 'Segne deine Thronglets 5-mal mit göttlicher Gunst.', done: false },
+            { id: 'tech_3', name: 'Wissensdurst', desc: 'Erforsche mindestens 3 Technologien.', done: false },
+            { id: 'tech_8', name: 'Meistergelehrter', desc: 'Erforsche 8 Technologien im Archiv.', done: false },
+            { id: 'bread_chain', name: 'Vom Korn zum Brot', desc: 'Besitze gleichzeitig Ackerfeld, Windmühle und Bäckerei.', done: false },
+            { id: 'fisher_king', name: 'Gabentisch des Flusses', desc: 'Baue eine Fischerhütte am Wasser.', done: false },
+            { id: 'healer_built', name: 'Fürsorge', desc: 'Errichte einen Kräuterheiler für kranke Bewohner.', done: false },
+            { id: 'night_lights', name: 'Lichter der Nacht', desc: 'Stelle mindestens 3 Straßenlaternen auf.', done: false },
+            { id: 'wealthy', name: 'Überfluss', desc: 'Lagere gleichzeitig über 300 Nahrung und 300 Holz.', done: false },
+            { id: 'weather_5', name: 'Gezeitenwechsel', desc: 'Überstehe 5 Wetterumschwünge mit deiner Siedlung.', done: false },
+            { id: 'ascension', name: 'Ära der Erleuchtung', desc: 'Errichte den hochmodernen Synthese-Kern.', done: false }
+        ];
+
+        const THRONG_NAMES = [
+            'Lumi', 'Piko', 'Nori', 'Taro', 'Zuri', 'Milo', 'Kira', 'Bobo',
+            'Vivi', 'Sora', 'pipo', 'Fina', 'Koko', 'Yuna', 'Tobi', 'Nala'
+        ];
+
+        const state = {
+            gameStarted: false,
+            isPaused: true,
+            gameSpeed: 1,
+            activeCategory: 'god',
+            activeTool: 'grab',
+            resources: { wood: 140, stone: 100, iron: 25, food: 160, water: 125, knowledge: 35 },
+            popCap: 2,
+            timeOfDay: 8.0,
+            isNight: false,
+            weather: WEATHER_TYPES[0],
+            weatherTimer: 45,
+            weathersSurvived: 0,
+            blessCount: 0,
+            plantedTreesCount: 0,
+            culture: { compassion: 50, discipline: 50, devotion: 85 },
+            tiles: [],
+            thronglets: [],
+            buildings: [],
+            resourceNodes: [],
+            particles: [],
+            textures: {},
+            materials: {},
+            selectedEntity: null,
+            draggedThronglet: null,
+            lastSpeechTime: 0
+        };
+
+        // Audio Synthesizer (Web Audio API)
+        let audioCtx = null;
+        function playSound(type) {
+            try {
+                if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                if (audioCtx.state === 'suspended') audioCtx.resume();
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                const now = audioCtx.currentTime;
+
+                if (type === 'build') {
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(240, now);
+                    osc.frequency.exponentialRampToValueAtTime(480, now + 0.12);
+                    gain.gain.setValueAtTime(0.08, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.14);
+                    osc.start(now);
+                    osc.stop(now + 0.14);
+                } else if (type === 'bless') {
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(523.25, now);
+                    osc.frequency.exponentialRampToValueAtTime(783.99, now + 0.25);
+                    gain.gain.setValueAtTime(0.09, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.28);
+                    osc.start(now);
+                    osc.stop(now + 0.28);
+                } else if (type === 'chirp') {
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(640 + Math.random() * 220, now);
+                    osc.frequency.exponentialRampToValueAtTime(880, now + 0.08);
+                    gain.gain.setValueAtTime(0.05, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.09);
+                    osc.start(now);
+                    osc.stop(now + 0.09);
+                }
+            } catch (e) {}
+        }
+    </script>
+
+    <script>
+        let scene, camera, renderer, worldGroup, sunLight, ambientLight;
+        let raycaster, mouseVec;
+        let hoverMarker;
+        let camDistance = 32;
+        let camAngle = Math.PI / 4;
+        let camPitch = 0.68;
+        let camTarget = new THREE.Vector3(0, 0, 0);
+        let isDraggingCamera = false;
+        let prevPointer = { x: 0, y: 0 };
+        let pointerDownPos = { x: 0, y: 0 };
+
+        function createProceduralTextures() {
+            // Grass Texture
+            const gCanvas = document.createElement('canvas');
+            gCanvas.width = 128; gCanvas.height = 128;
+            const gCtx = gCanvas.getContext('2d');
+            gCtx.fillStyle = '#15803d';
+            gCtx.fillRect(0, 0, 128, 128);
+            for (let i = 0; i < 400; i++) {
+                gCtx.fillStyle = i % 2 === 0 ? '#166534' : '#22c55e';
+                gCtx.fillRect(Math.random() * 128, Math.random() * 128, 2, 4);
+            }
+            for (let i = 0; i < 16; i++) {
+                gCtx.fillStyle = i % 3 === 0 ? '#fde047' : '#f9a8d4';
+                gCtx.fillRect(Math.random() * 120, Math.random() * 120, 3, 3);
+            }
+            state.textures.grass = new THREE.CanvasTexture(gCanvas);
+
+            // Water Texture
+            const wCanvas = document.createElement('canvas');
+            wCanvas.width = 128; wCanvas.height = 128;
+            const wCtx = wCanvas.getContext('2d');
+            wCtx.fillStyle = '#0284c7';
+            wCtx.fillRect(0, 0, 128, 128);
+            wCtx.strokeStyle = 'rgba(186, 230, 253, 0.35)';
+            wCtx.lineWidth = 2;
+            for (let y = 8; y < 128; y += 16) {
+                wCtx.beginPath();
+                wCtx.moveTo(0, y);
+                wCtx.quadraticCurveTo(64, y + 6, 128, y);
+                wCtx.stroke();
+            }
+            const waterTex = new THREE.CanvasTexture(wCanvas);
+            waterTex.wrapS = THREE.RepeatWrapping;
+            waterTex.wrapT = THREE.RepeatWrapping;
+            state.textures.water = waterTex;
+            state.materials.water = new THREE.MeshStandardMaterial({
+                map: waterTex,
+                color: 0x38bdf8,
+                roughness: 0.15,
+                metalness: 0.25
+            });
+
+            // Dirt Path
+            const dCanvas = document.createElement('canvas');
+            dCanvas.width = 64; dCanvas.height = 64;
+            const dCtx = dCanvas.getContext('2d');
+            dCtx.fillStyle = '#92400e';
+            dCtx.fillRect(0, 0, 64, 64);
+            for (let i = 0; i < 120; i++) {
+                dCtx.fillStyle = '#78350f';
+                dCtx.fillRect(Math.random() * 64, Math.random() * 64, 3, 3);
+            }
+            state.textures.dirt_path = new THREE.CanvasTexture(dCanvas);
+
+            // Gravel Road
+            const grCanvas = document.createElement('canvas');
+            grCanvas.width = 64; grCanvas.height = 64;
+            const grCtx = grCanvas.getContext('2d');
+            grCtx.fillStyle = '#64748b';
+            grCtx.fillRect(0, 0, 64, 64);
+            for (let i = 0; i < 180; i++) {
+                grCtx.fillStyle = i % 2 === 0 ? '#94a3b8' : '#475569';
+                grCtx.fillRect(Math.random() * 64, Math.random() * 64, 3, 3);
+            }
+            state.textures.gravel_road = new THREE.CanvasTexture(grCanvas);
+
+            // Paved Road
+            const pCanvas = document.createElement('canvas');
+            pCanvas.width = 64; pCanvas.height = 64;
+            const pCtx = pCanvas.getContext('2d');
+            pCtx.fillStyle = '#334155';
+            pCtx.fillRect(0, 0, 64, 64);
+            pCtx.strokeStyle = '#1e293b';
+            pCtx.lineWidth = 2;
+            for (let y = 0; y < 64; y += 16) {
+                for (let x = 0; x < 64; x += 16) {
+                    pCtx.strokeRect(x, y, 16, 16);
+                }
+            }
+            state.textures.paved_road = new THREE.CanvasTexture(pCanvas);
+        }
+
+        function initThreeJS() {
+            const container = document.getElementById('canvas-container');
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x0f172a);
+            scene.fog = new THREE.FogExp2(0x0f172a, 0.012);
+
+            camera = new THREE.PerspectiveCamera(42, window.innerWidth / window.innerHeight, 0.1, 250);
+            updateCameraPosition();
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            container.appendChild(renderer.domElement);
+
+            ambientLight = new THREE.AmbientLight(0xdbeafe, 0.65);
+            scene.add(ambientLight);
+
+            sunLight = new THREE.DirectionalLight(0xfef08a, 1.15);
+            sunLight.position.set(28, 42, 24);
+            sunLight.castShadow = true;
+            sunLight.shadow.mapSize.width = 2048;
+            sunLight.shadow.mapSize.height = 2048;
+            sunLight.shadow.camera.near = 5;
+            sunLight.shadow.camera.far = 110;
+            const d = 28;
+            sunLight.shadow.camera.left = -d;
+            sunLight.shadow.camera.right = d;
+            sunLight.shadow.camera.top = d;
+            sunLight.shadow.camera.bottom = -d;
+            scene.add(sunLight);
+
+            worldGroup = new THREE.Group();
+            scene.add(worldGroup);
+
+            const ringGeo = new THREE.RingGeometry(0.65, 0.85, 24);
+            ringGeo.rotateX(-Math.PI / 2);
+            hoverMarker = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({ color: 0x22d3ee, side: THREE.DoubleSide }));
+            hoverMarker.visible = false;
+            scene.add(hoverMarker);
+
+            raycaster = new THREE.Raycaster();
+            mouseVec = new THREE.Vector2();
+
+            createProceduralTextures();
+
+            window.addEventListener('resize', () => {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+            });
+
+            const dom = renderer.domElement;
+            dom.addEventListener('pointerdown', onPointerDown);
+            dom.addEventListener('pointermove', onPointerMove);
+            window.addEventListener('pointerup', onPointerUp);
+            dom.addEventListener('wheel', (e) => {
+                camDistance = Math.max(14, Math.min(54, camDistance + e.deltaY * 0.02));
+                updateCameraPosition();
+            }, { passive: true });
+            dom.addEventListener('contextmenu', e => e.preventDefault());
+        }
+
+        function updateCameraPosition() {
+            if (!camera) return;
+            const x = camTarget.x + camDistance * Math.cos(camPitch) * Math.sin(camAngle);
+            const y = camTarget.y + camDistance * Math.sin(camPitch);
+            const z = camTarget.z + camDistance * Math.cos(camPitch) * Math.cos(camAngle);
+            camera.position.set(x, y, z);
+            camera.lookAt(camTarget);
+        }
+
+        function resetCamera() {
+            camTarget.set(0, 0, 0);
+            camDistance = 32;
+            camAngle = Math.PI / 4;
+            updateCameraPosition();
+        }
+    </script>
+
+    <script>
+        function getTileAtGrid(gx, gz) {
+            if (gx < 0 || gz < 0 || gx >= GRID_SIZE || gz >= GRID_SIZE) return null;
+            return state.tiles[gx]?.[gz] || null;
+        }
+
+        function getTileAtWorld(wx, wz) {
+            const half = (GRID_SIZE * TILE_SIZE) / 2 - TILE_SIZE / 2;
+            const gx = Math.round((wx + half) / TILE_SIZE);
+            const gz = Math.round((wz + half) / TILE_SIZE);
+            return getTileAtGrid(gx, gz);
+        }
+
+        function isTileConnectedToRoad(tile) {
+            if (!tile) return false;
+            if (tile.roadTier > 0 || tile.hasBridge || tile.type === 'plaza') return true;
+            const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+            for (const [dx, dz] of dirs) {
+                const nb = getTileAtGrid(tile.gx + dx, tile.gz + dz);
+                if (nb && (nb.roadTier > 0 || nb.hasBridge || nb.type === 'plaza')) return true;
+            }
+            return false;
+        }
+
+        function isTileNearWater(tile) {
+            const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+            for (const [dx, dz] of dirs) {
+                const nb = getTileAtGrid(tile.gx + dx, tile.gz + dz);
+                if (nb && nb.type === 'water') return true;
+            }
+            return false;
+        }
+
+        function generateProceduralWorld() {
+            const half = (GRID_SIZE * TILE_SIZE) / 2 - TILE_SIZE / 2;
+            const center = Math.floor(GRID_SIZE / 2);
+
+            for (let gx = 0; gx < GRID_SIZE; gx++) {
+                state.tiles[gx] = [];
+                for (let gz = 0; gz < GRID_SIZE; gz++) {
+                    const wx = gx * TILE_SIZE - half;
+                    const wz = gz * TILE_SIZE - half;
+                    const distCenter = Math.hypot(gx - center, gz - center);
+
+                    let type = 'grass';
+                    let height = 0.55 + (Math.sin(gx * 0.45) * Math.cos(gz * 0.45)) * 0.12;
+
+                    // River & Lake generation
+                    const riverZ = Math.round(center + 4 + Math.sin(gx * 0.35) * 2.2);
+                    if (gz === riverZ || (gx > 3 && gx < 8 && gz >= riverZ - 2 && gz <= riverZ + 1)) {
+                        type = 'water';
+                        height = 0.28;
+                    } else if (distCenter <= 2.3) {
+                        type = 'plaza';
+                        height = 0.6;
+                    }
+
+                    const tileGroup = new THREE.Group();
+                    const dirtMat = new THREE.MeshStandardMaterial({ color: 0x3f2e21, roughness: 0.95 });
+                    const dirtBase = new THREE.Mesh(
+                        new THREE.BoxGeometry(TILE_SIZE * 0.99, height * 0.75, TILE_SIZE * 0.99),
+                        dirtMat
+                    );
+                    dirtBase.position.y = (height * 0.75) / 2;
+                    dirtBase.receiveShadow = true;
+                    tileGroup.add(dirtBase);
+
+                    let topMat;
+                    if (type === 'water') {
+                        topMat = state.materials.water;
+                    } else if (type === 'plaza') {
+                        topMat = new THREE.MeshStandardMaterial({ map: state.textures.paved_road, color: 0x94a3b8, roughness: 0.65 });
+                    } else {
+                        topMat = new THREE.MeshStandardMaterial({
+                            map: state.textures.grass,
+                            color: (gx + gz) % 2 === 0 ? 0xffffff : 0xe2e8f0,
+                            roughness: 0.88
+                        });
+                    }
+
+                    const topCap = new THREE.Mesh(
+                        new THREE.BoxGeometry(TILE_SIZE * 0.97, height * 0.3, TILE_SIZE * 0.97),
+                        topMat
+                    );
+                    topCap.position.y = height * 0.85;
+                    topCap.receiveShadow = true;
+                    tileGroup.add(topCap);
+
+                    const decorGroup = new THREE.Group();
+                    tileGroup.add(decorGroup);
+                    tileGroup.position.set(wx, 0, wz);
+
+                    const tileObj = {
+                        gx, gz, wx, wz, type, height,
+                        mesh: tileGroup,
+                        dirtBase,
+                        topCap,
+                        decorGroup,
+                        roadTier: type === 'plaza' ? 3 : 0,
+                        roadType: type === 'plaza' ? 'paved_road' : null,
+                        roadMesh: null,
+                        hasBridge: false,
+                        bridgeMesh: null,
+                        building: null,
+                        resourceNode: null
+                    };
+                    tileGroup.userData.tile = tileObj;
+                    topCap.userData.tile = tileObj;
+                    dirtBase.userData.tile = tileObj;
+
+                    worldGroup.add(tileGroup);
+                    state.tiles[gx][gz] = tileObj;
+                }
+            }
+
+            // Place Shrine at Center
+            placeShrine(state.tiles[center][center]);
+
+            // Initial starter tent & well connected to central plaza
+            placeBuildingOnTile(state.tiles[center - 2][center], 'tent', true);
+            placeBuildingOnTile(state.tiles[center + 2][center], 'well', true);
+            buildRoadOnTile(state.tiles[center][center + 3], 'dirt_path', true);
+            buildBridgeOnTile(state.tiles[center][center + 4], true);
+
+            // Spawn Natural Resources (Forests, Rocks, Iron, Berry Bushes)
+            for (let gx = 0; gx < GRID_SIZE; gx++) {
+                for (let gz = 0; gz < GRID_SIZE; gz++) {
+                    const tile = state.tiles[gx][gz];
+                    const dist = Math.hypot(gx - center, gz - center);
+                    if (tile.type !== 'grass' || tile.building || tile.roadTier > 0 || dist < 3.5) continue;
+
+                    const r = Math.random();
+                    if (r < 0.16) spawnResourceNode(tile, 'forest');
+                    else if (r < 0.22) spawnResourceNode(tile, 'stone');
+                    else if (r < 0.25 && dist > 6) spawnResourceNode(tile, 'iron');
+                    else if (r < 0.29) spawnResourceNode(tile, 'berry');
+                }
+            }
+
+            refreshAllBridgesAndConnections();
+        }
+
+        function placeShrine(tile) {
+            if (!tile) return;
+            const g = new THREE.Group();
+            const baseMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.4 });
+            const goldMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, metalness: 0.7, roughness: 0.2 });
+            const crystalMat = new THREE.MeshStandardMaterial({ color: 0x22d3ee, emissive: 0x06b6d4, emissiveIntensity: 0.7 });
+
+            const p1 = new THREE.Mesh(new THREE.CylinderGeometry(0.75, 0.9, 0.35, 8), baseMat);
+            p1.position.y = 0.18;
+            const p2 = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.65, 0.45, 8), baseMat);
+            p2.position.y = 0.55;
+            const ring = new THREE.Mesh(new THREE.TorusGeometry(0.45, 0.05, 8, 24), goldMat);
+            ring.rotation.x = Math.PI / 2;
+            ring.position.y = 0.8;
+            const crystal = new THREE.Mesh(new THREE.OctahedronGeometry(0.35, 0), crystalMat);
+            crystal.position.y = 1.35;
+            crystal.castShadow = true;
+
+            g.add(p1, p2, ring, crystal);
+            g.position.set(tile.wx, tile.height, tile.wz);
+            worldGroup.add(g);
+
+            const bObj = {
+                type: 'shrine',
+                name: 'Schrein des Schöpfers',
+                tile,
+                mesh: g,
+                crystal,
+                connected: true
+            };
+            g.userData.entity = bObj;
+            tile.building = bObj;
+            state.buildings.push(bObj);
+        }
+
+        function spawnResourceNode(tile, resType, initialScale = 1.0) {
+            if (!tile || tile.building || tile.resourceNode || tile.type !== 'grass') return null;
+            const group = new THREE.Group();
+            let maxAmount = 120;
+            let label = 'Wald';
+
+            if (resType === 'forest') {
+                label = 'Dichter Wald';
+                maxAmount = 100;
+                const trunkMat = new THREE.MeshStandardMaterial({ color: 0x5c2d0c, roughness: 0.9 });
+                const leafMat1 = new THREE.MeshStandardMaterial({ color: 0x15803d, roughness: 0.75 });
+                const leafMat2 = new THREE.MeshStandardMaterial({ color: 0x16a34a, roughness: 0.7 });
+                const offsets = [[-0.35, -0.3], [0.38, 0.25], [-0.1, 0.42]];
+                offsets.forEach(([ox, oz], idx) => {
+                    const tree = new THREE.Group();
+                    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.11, 0.45, 6), trunkMat);
+                    trunk.position.y = 0.22;
+                    const cone1 = new THREE.Mesh(new THREE.ConeGeometry(0.42, 0.65, 7), idx % 2 === 0 ? leafMat1 : leafMat2);
+                    cone1.position.y = 0.58;
+                    cone1.castShadow = true;
+                    const cone2 = new THREE.Mesh(new THREE.ConeGeometry(0.3, 0.52, 7), leafMat2);
+                    cone2.position.y = 0.92;
+                    cone2.castShadow = true;
+                    tree.add(trunk, cone1, cone2);
+                    tree.position.set(ox, 0, oz);
+                    const s = 0.85 + (idx * 0.12);
+                    tree.scale.set(s, s, s);
+                    group.add(tree);
+                });
+            } else if (resType === 'stone') {
+                label = 'Felsvorkommen';
+                maxAmount = 160;
+                const rockMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, roughness: 0.85, flatShading: true });
+                const r1 = new THREE.Mesh(new THREE.DodecahedronGeometry(0.55, 0), rockMat);
+                r1.position.set(-0.2, 0.35, 0.1);
+                r1.castShadow = true;
+                const r2 = new THREE.Mesh(new THREE.DodecahedronGeometry(0.38, 0), rockMat);
+                r2.position.set(0.35, 0.25, -0.2);
+                r2.castShadow = true;
+                group.add(r1, r2);
+            } else if (resType === 'iron') {
+                label = 'Eisenmine';
+                maxAmount = 140;
+                const rockMat = new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.75, flatShading: true });
+                const oreMat = new THREE.MeshStandardMaterial({ color: 0x818cf8, emissive: 0x4f46e5, emissiveIntensity: 0.35, metalness: 0.8, roughness: 0.2 });
+                const baseRock = new THREE.Mesh(new THREE.DodecahedronGeometry(0.58, 0), rockMat);
+                baseRock.position.y = 0.38;
+                baseRock.castShadow = true;
+                group.add(baseRock);
+                for (let i = 0; i < 4; i++) {
+                    const crystal = new THREE.Mesh(new THREE.OctahedronGeometry(0.18, 0), oreMat);
+                    crystal.position.set((i - 1.5) * 0.22, 0.55 + (i % 2) * 0.15, (i % 2 === 0 ? 0.25 : -0.25));
+                    group.add(crystal);
+                }
+            } else if (resType === 'berry') {
+                label = 'Wildes Fruchtfeld';
+                maxAmount = 95;
+                const bushMat = new THREE.MeshStandardMaterial({ color: 0x16a34a, roughness: 0.8 });
+                const berryMat = new THREE.MeshStandardMaterial({ color: 0xf43f5e, emissive: 0xe11d48, emissiveIntensity: 0.25 });
+                for (let b = 0; b < 3; b++) {
+                    const bush = new THREE.Mesh(new THREE.SphereGeometry(0.32, 8, 8), bushMat);
+                    bush.position.set((b - 1) * 0.38, 0.26, (b % 2 === 0 ? 0.2 : -0.2));
+                    bush.castShadow = true;
+                    group.add(bush);
+                    const berry = new THREE.Mesh(new THREE.SphereGeometry(0.09, 6, 6), berryMat);
+                    berry.position.set(bush.position.x + 0.12, 0.48, bush.position.z + 0.1);
+                    group.add(berry);
+                }
+            }
+
+            group.position.set(tile.wx, tile.height, tile.wz);
+            group.scale.set(initialScale, initialScale, initialScale);
+            worldGroup.add(group);
+
+            const nodeObj = {
+                resType,
+                label,
+                amount: maxAmount * initialScale,
+                maxAmount,
+                regrowTimer: 0,
+                mesh: group,
+                tile
+            };
+            group.userData.entity = nodeObj;
+            tile.resourceNode = nodeObj;
+            state.resourceNodes.push(nodeObj);
+            return nodeObj;
+        }
+
+        function removeResourceNode(node) {
+            if (!node) return;
+            if (node.mesh) worldGroup.remove(node.mesh);
+            if (node.tile) node.tile.resourceNode = null;
+            const idx = state.resourceNodes.indexOf(node);
+            if (idx !== -1) state.resourceNodes.splice(idx, 1);
+        }
+
+        function buildRoadOnTile(tile, roadType, isFree = false) {
+            const def = BUILDINGS[roadType];
+            if (!def || !def.isRoad) return false;
+            if (tile.type === 'water') {
+                if (!isFree) logEvent('Straßen können nicht im Wasser gebaut werden! Nutze eine Holzbrücke.', 'text-amber-400');
+                return false;
+            }
+            if (tile.roadTier >= def.roadTier && !isFree) {
+                logEvent('Hier befindet sich bereits eine gleichwertige oder bessere Straße.', 'text-amber-400');
+                return false;
+            }
+            if (!isFree) {
+                if (state.resources.wood < def.cost.wood || state.resources.stone < def.cost.stone || state.resources.iron < def.cost.iron) {
+                    logEvent('Nicht genügend Ressourcen für ' + def.name + '!', 'text-rose-400');
+                    return false;
+                }
+                state.resources.wood -= def.cost.wood;
+                state.resources.stone -= def.cost.stone;
+                state.resources.iron -= def.cost.iron;
+            }
+
+            if (tile.resourceNode) removeResourceNode(tile.resourceNode);
+            if (tile.roadMesh) worldGroup.remove(tile.roadMesh);
+
+            const roadGroup = new THREE.Group();
+            const tex = state.textures[roadType] || state.textures.dirt_path;
+            const roadMat = new THREE.MeshStandardMaterial({ map: tex, roughness: def.roadTier === 3 ? 0.55 : 0.9 });
+            const slab = new THREE.Mesh(new THREE.BoxGeometry(TILE_SIZE * 0.92, 0.05, TILE_SIZE * 0.92), roadMat);
+            slab.position.set(tile.wx, tile.height + 0.025, tile.wz);
+            slab.receiveShadow = true;
+            roadGroup.add(slab);
+
+            if (def.roadTier === 3) {
+                const curbMat = new THREE.MeshStandardMaterial({ color: 0xcbd5e1, roughness: 0.6 });
+                const c1 = new THREE.Mesh(new THREE.BoxGeometry(TILE_SIZE * 0.95, 0.07, 0.08), curbMat);
+                c1.position.set(tile.wx, tile.height + 0.035, tile.wz - TILE_SIZE * 0.44);
+                const c2 = c1.clone();
+                c2.position.set(tile.wx, tile.height + 0.035, tile.wz + TILE_SIZE * 0.44);
+                roadGroup.add(c1, c2);
+            }
+
+            worldGroup.add(roadGroup);
+            tile.roadTier = def.roadTier;
+            tile.roadType = roadType;
+            tile.roadMesh = roadGroup;
+            refreshAllBridgesAndConnections();
+            if (!isFree) {
+                playSound('build');
+                unlockAchievement('first_road');
+                updateHUD();
+            }
+            return true;
+        }
+
+        function buildBridgeOnTile(tile, isFree = false) {
+            const def = BUILDINGS.wood_bridge;
+            if (tile.type !== 'water' || tile.hasBridge) {
+                if (!isFree) logEvent('Brücken können nur auf freien Wasserfeldern errichtet werden!', 'text-amber-400');
+                return false;
+            }
+            if (!isFree) {
+                if (state.resources.wood < def.cost.wood || state.resources.stone < def.cost.stone) {
+                    logEvent('Nicht genügend Holz oder Stein für eine Holzbrücke!', 'text-rose-400');
+                    return false;
+                }
+                state.resources.wood -= def.cost.wood;
+                state.resources.stone -= def.cost.stone;
+            }
+
+            tile.hasBridge = true;
+            refreshAllBridgesAndConnections();
+            if (!isFree) {
+                playSound('build');
+                unlockAchievement('bridge_builder');
+                updateHUD();
+            }
+            return true;
+        }
+
+        function updateSingleBridgeMesh(tile) {
+            if (tile.bridgeMesh) {
+                worldGroup.remove(tile.bridgeMesh);
+                tile.bridgeMesh = null;
+            }
+            if (!tile.hasBridge) return;
+
+            const g = new THREE.Group();
+            const deckY = 0.58;
+            const woodMat = new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.85 });
+            const railMat = new THREE.MeshStandardMaterial({ color: 0x92400e, roughness: 0.8 });
+
+            const deck = new THREE.Mesh(new THREE.BoxGeometry(TILE_SIZE * 0.98, 0.08, TILE_SIZE * 0.98), woodMat);
+            deck.position.set(tile.wx, deckY, tile.wz);
+            deck.receiveShadow = true;
+            g.add(deck);
+
+            // Check 4 neighbors: only place railings where neighbor is open water without bridge
+            const checkRailingSide = (dx, dz, isXAxis) => {
+                const nb = getTileAtGrid(tile.gx + dx, tile.gz + dz);
+                const needsRailing = nb && nb.type === 'water' && !nb.hasBridge;
+                if (!needsRailing) return;
+
+                const offset = (TILE_SIZE * 0.44);
+                const rx = tile.wx + dx * offset;
+                const rz = tile.wz + dz * offset;
+
+                const barGeo = isXAxis
+                    ? new THREE.BoxGeometry(0.08, 0.06, TILE_SIZE * 0.92)
+                    : new THREE.BoxGeometry(TILE_SIZE * 0.92, 0.06, 0.08);
+                const bar = new THREE.Mesh(barGeo, railMat);
+                bar.position.set(rx, deckY + 0.24, rz);
+                g.add(bar);
+
+                for (let p = -0.36; p <= 0.36; p += 0.72) {
+                    const post = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.3, 0.09), woodMat);
+                    post.position.set(
+                        isXAxis ? rx : tile.wx + p * TILE_SIZE,
+                        deckY + 0.15,
+                        isXAxis ? tile.wz + p * TILE_SIZE : rz
+                    );
+                    g.add(post);
+                }
+            };
+
+            checkRailingSide(1, 0, true);
+            checkRailingSide(-1, 0, true);
+            checkRailingSide(0, 1, false);
+            checkRailingSide(0, -1, false);
+
+            worldGroup.add(g);
+            tile.bridgeMesh = g;
+        }
+
+        function refreshAllBridgesAndConnections() {
+            for (let gx = 0; gx < GRID_SIZE; gx++) {
+                for (let gz = 0; gz < GRID_SIZE; gz++) {
+                    const t = state.tiles[gx]?.[gz];
+                    if (t && t.hasBridge) updateSingleBridgeMesh(t);
+                }
+            }
+
+            let cap = 2; // Shrine base capacity
+            state.buildings.forEach(b => {
+                if (b.type === 'shrine') {
+                    b.connected = true;
+                    return;
+                }
+                b.connected = isTileConnectedToRoad(b.tile);
+                if (b.warnMesh) b.warnMesh.visible = !b.connected;
+                const def = BUILDINGS[b.type];
+                if (def && def.popCap && b.connected) {
+                    cap += def.popCap;
+                }
+            });
+            state.popCap = cap;
+        }
+
+        function placeBuildingOnTile(tile, type, isFree = false) {
+            const def = BUILDINGS[type];
+            if (!def || !tile) return false;
+            if (tile.type !== 'grass' || tile.building) {
+                if (!isFree) logEvent('Dieses Feld ist bereits belegt oder ungeeignet!', 'text-amber-400');
+                return false;
+            }
+            if (def.nearWater && !isTileNearWater(tile)) {
+                if (!isFree) logEvent(def.name + ' muss direkt am Wasserufer gebaut werden!', 'text-amber-400');
+                return false;
+            }
+            if (!isFree) {
+                if (state.resources.wood < def.cost.wood || state.resources.stone < def.cost.stone || state.resources.iron < def.cost.iron) {
+                    logEvent('Nicht genügend Ressourcen für ' + def.name + '!', 'text-rose-400');
+                    return false;
+                }
+                state.resources.wood -= def.cost.wood;
+                state.resources.stone -= def.cost.stone;
+                state.resources.iron -= def.cost.iron;
+            }
+
+            if (tile.resourceNode) removeResourceNode(tile.resourceNode);
+
+            const g = new THREE.Group();
+            let bladesMesh = null;
+
+            if (type === 'tent') {
+                const mat = new THREE.MeshStandardMaterial({ color: 0xf59e0b, roughness: 0.8 });
+                const cone = new THREE.Mesh(new THREE.ConeGeometry(0.72, 1.1, 6), mat);
+                cone.position.y = 0.55;
+                cone.castShadow = true;
+                g.add(cone);
+            } else if (type === 'hut') {
+                const wall = new THREE.Mesh(new THREE.BoxGeometry(1.15, 0.75, 1.15), new THREE.MeshStandardMaterial({ color: 0x78350f }));
+                wall.position.y = 0.38;
+                const roof = new THREE.Mesh(new THREE.ConeGeometry(0.95, 0.65, 4), new THREE.MeshStandardMaterial({ color: 0xb45309 }));
+                roof.position.y = 1.05;
+                roof.rotation.y = Math.PI / 4;
+                wall.castShadow = true; roof.castShadow = true;
+                g.add(wall, roof);
+            } else if (type === 'modern_house') {
+                const body = new THREE.Mesh(new THREE.BoxGeometry(1.3, 1.25, 1.3), new THREE.MeshStandardMaterial({ color: 0xe2e8f0 }));
+                body.position.y = 0.62;
+                const glass = new THREE.Mesh(new THREE.BoxGeometry(1.34, 0.35, 1.0), new THREE.MeshStandardMaterial({ color: 0x38bdf8, emissive: 0x0284c7, emissiveIntensity: 0.3 }));
+                glass.position.y = 0.85;
+                body.castShadow = true;
+                g.add(body, glass);
+            } else if (type === 'windmill') {
+                const tower = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.62, 1.45, 8), new THREE.MeshStandardMaterial({ color: 0xfef3c7 }));
+                tower.position.y = 0.72;
+                const cap = new THREE.Mesh(new THREE.ConeGeometry(0.48, 0.45, 8), new THREE.MeshStandardMaterial({ color: 0x92400e }));
+                cap.position.y = 1.62;
+                bladesMesh = new THREE.Group();
+                const bladeMat = new THREE.MeshStandardMaterial({ color: 0xfde68a });
+                for (let i = 0; i < 4; i++) {
+                    const b = new THREE.Mesh(new THREE.BoxGeometry(0.14, 1.25, 0.04), bladeMat);
+                    b.rotation.z = (i * Math.PI) / 2;
+                    bladesMesh.add(b);
+                }
+                bladesMesh.position.set(0, 1.15, 0.48);
+                g.add(tower, cap, bladesMesh);
+            } else if (type === 'farm') {
+                const soil = new THREE.Mesh(new THREE.BoxGeometry(1.65, 0.08, 1.65), new THREE.MeshStandardMaterial({ color: 0x451a03 }));
+                soil.position.y = 0.04;
+                g.add(soil);
+                const cropMat = new THREE.MeshStandardMaterial({ color: 0xeab308 });
+                for (let x = -0.55; x <= 0.55; x += 0.55) {
+                    for (let z = -0.55; z <= 0.55; z += 0.55) {
+                        const stalk = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.1, 0.38, 5), cropMat);
+                        stalk.position.set(x, 0.22, z);
+                        g.add(stalk);
+                    }
+                }
+            } else if (type === 'lantern') {
+                const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.07, 1.1, 6), new THREE.MeshStandardMaterial({ color: 0x334155 }));
+                pole.position.y = 0.55;
+                const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.16, 8, 8), new THREE.MeshStandardMaterial({ color: 0xfef08a, emissive: 0xfacc15, emissiveIntensity: 0.9 }));
+                bulb.position.y = 1.15;
+                g.add(pole, bulb);
+            } else {
+                const baseColor = type === 'bakery' ? 0xf97316 : type === 'herbalist' ? 0x10b981 : type === 'synth_core' ? 0x06b6d4 : 0x94a3b8;
+                const box = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.85, 1.2), new THREE.MeshStandardMaterial({ color: baseColor, roughness: 0.6 }));
+                box.position.y = 0.42;
+                box.castShadow = true;
+                g.add(box);
+            }
+
+            // Road Connection Warning Crystal
+            const warnMesh = new THREE.Mesh(
+                new THREE.OctahedronGeometry(0.18, 0),
+                new THREE.MeshBasicMaterial({ color: 0xf43f5e })
+            );
+            warnMesh.position.y = 1.95;
+            g.add(warnMesh);
+
+            g.position.set(tile.wx, tile.height, tile.wz);
+            worldGroup.add(g);
+
+            const bObj = {
+                type,
+                name: def.name,
+                tile,
+                mesh: g,
+                bladesMesh,
+                warnMesh,
+                connected: false
+            };
+            g.userData.entity = bObj;
+            tile.building = bObj;
+            state.buildings.push(bObj);
+
+            refreshAllBridgesAndConnections();
+            checkBuildingAchievements();
+            if (!isFree) {
+                playSound('build');
+                updateHUD();
+            }
+            return true;
+        }
+    </script>
+
+    <script>
+        function spawnThronglet(wx, wz) {
+            const g = new THREE.Group();
+            const bodyMat = new THREE.MeshStandardMaterial({ color: 0x38bdf8, roughness: 0.4 });
+            const body = new THREE.Mesh(new THREE.SphereGeometry(0.28, 12, 12), bodyMat);
+            body.position.y = 0.28;
+            body.castShadow = true;
+            g.add(body);
+
+            const eyeMat = new THREE.MeshBasicMaterial({ color: 0x0f172a });
+            const e1 = new THREE.Mesh(new THREE.SphereGeometry(0.045, 6, 6), eyeMat);
+            e1.position.set(-0.1, 0.34, 0.24);
+            const e2 = e1.clone();
+            e2.position.x = 0.1;
+            g.add(e1, e2);
+
+            const tile = getTileAtWorld(wx, wz);
+            const y = tile ? (tile.hasBridge ? 0.62 : tile.height) : 0.6;
+            g.position.set(wx, y, wz);
+            worldGroup.add(g);
+
+            const th = {
+                name: THRONG_NAMES[Math.floor(Math.random() * THRONG_NAMES.length)] + '-' + (state.thronglets.length + 1),
+                mesh: g,
+                bodyMat,
+                hunger: 85 + Math.random() * 15,
+                thirst: 85 + Math.random() * 15,
+                health: 100,
+                happiness: 90,
+                age: 12,
+                disease: null,
+                stateLabel: 'Erkundet',
+                targetPos: null,
+                actionTimer: 0
+            };
+            g.userData.thronglet = th;
+            state.thronglets.push(th);
+            if (state.thronglets.length >= 10) unlockAchievement('pop_10');
+            if (state.thronglets.length >= 20) unlockAchievement('pop_20');
+            return th;
+        }
+
+        function showSpeechBubble(thronglet, text, force = false) {
+            const now = performance.now();
+            if (!force && now - state.lastSpeechTime < 5500) return;
+            state.lastSpeechTime = now;
+
+            const vec = thronglet.mesh.position.clone();
+            vec.y += 0.9;
+            vec.project(camera);
+            if (vec.z > 1) return;
+
+            const x = (vec.x * 0.5 + 0.5) * window.innerWidth;
+            const y = (-(vec.y * 0.5) + 0.5) * window.innerHeight;
+
+            const container = document.getElementById('speech-container');
+            container.innerHTML = '';
+            const div = document.createElement('div');
+            div.className = 'speech-bubble glass-panel px-2.5 py-1 rounded-xl text-[11px] font-medium text-cyan-200 border border-cyan-400/40 shadow-lg';
+            div.style.left = `${x}px`;
+            div.style.top = `${y}px`;
+            div.textContent = text;
+            container.appendChild(div);
+            setTimeout(() => { if (div.parentNode) div.remove(); }, 3400);
+        }
+
+        function updateThronglets(dt) {
+            for (let i = state.thronglets.length - 1; i >= 0; i--) {
+                const th = state.thronglets[i];
+                if (state.draggedThronglet === th) continue;
+
+                th.hunger = Math.max(0, th.hunger - dt * 0.75);
+                th.thirst = Math.max(0, th.thirst - dt * 0.9);
+                th.age += dt * 0.08;
+
+                // Eat / Drink if low
+                if (th.hunger < 45 && state.resources.food >= 1) {
+                    state.resources.food -= 1;
+                    th.hunger = Math.min(100, th.hunger + 45);
+                    showSpeechBubble(th, '🍞 Lecker, Danke Schöpfer!');
+                }
+                if (th.thirst < 45 && state.resources.water >= 1) {
+                    state.resources.water -= 1;
+                    th.thirst = Math.min(100, th.thirst + 45);
+                }
+
+                // Night sleep check
+                if (state.isNight) {
+                    th.stateLabel = '💤 Schläft';
+                    continue;
+                }
+
+                // Pick next target on roads or resource nodes
+                if (!th.targetPos || th.actionTimer <= 0) {
+                    th.actionTimer = 3.5 + Math.random() * 4;
+                    if (state.resourceNodes.length > 0 && Math.random() < 0.65) {
+                        const node = state.resourceNodes[Math.floor(Math.random() * state.resourceNodes.length)];
+                        th.targetPos = new THREE.Vector3(node.tile.wx, node.tile.height, node.tile.wz);
+                        th.targetNode = node;
+                        th.stateLabel = 'Sammelt (' + node.label + ')';
+                    } else {
+                        // Prefer road tiles
+                        const candidates = [];
+                        for (let gx = 0; gx < GRID_SIZE; gx++) {
+                            for (let gz = 0; gz < GRID_SIZE; gz++) {
+                                const t = state.tiles[gx][gz];
+                                if (t.type !== 'water' || t.hasBridge) {
+                                    candidates.push(t);
+                                    if (t.roadTier > 0 || t.hasBridge) candidates.push(t, t);
+                                }
+                            }
+                        }
+                        const pick = candidates[Math.floor(Math.random() * candidates.length)];
+                        if (pick) {
+                            th.targetPos = new THREE.Vector3(pick.wx, pick.hasBridge ? 0.62 : pick.height, pick.wz);
+                            th.targetNode = null;
+                            th.stateLabel = pick.roadTier > 0 ? 'Wandert auf Straße' : 'Erkundet';
+                        }
+                    }
+                }
+
+                th.actionTimer -= dt;
+
+                if (th.targetPos) {
+                    const dx = th.targetPos.x - th.mesh.position.x;
+                    const dz = th.targetPos.z - th.mesh.position.z;
+                    const dist = Math.hypot(dx, dz);
+                    const curTile = getTileAtWorld(th.mesh.position.x, th.mesh.position.z);
+                    const roadBoost = curTile ? (curTile.roadTier === 3 ? 1.85 : curTile.roadTier === 2 ? 1.5 : curTile.roadTier === 1 ? 1.25 : 1.0) : 1.0;
+
+                    if (dist > 0.25) {
+                        const speed = 1.65 * roadBoost * state.weather.speedMod;
+                        const nextX = th.mesh.position.x + (dx / dist) * speed * dt;
+                        const nextZ = th.mesh.position.z + (dz / dist) * speed * dt;
+                        const nextTile = getTileAtWorld(nextX, nextZ);
+
+                        // Prevent walking into open water without bridge
+                        if (nextTile && (nextTile.type !== 'water' || nextTile.hasBridge)) {
+                            th.mesh.position.x = nextX;
+                            th.mesh.position.z = nextZ;
+                            const baseH = nextTile.hasBridge ? 0.62 : nextTile.height;
+                            th.mesh.position.y = baseH + Math.abs(Math.sin(performance.now() * 0.01)) * 0.12;
+                        } else {
+                            th.targetPos = null;
+                        }
+                    } else if (th.targetNode && th.targetNode.amount > 0) {
+                        const harvest = dt * 3.2;
+                        th.targetNode.amount = Math.max(0, th.targetNode.amount - harvest);
+                        if (th.targetNode.resType === 'forest') state.resources.wood += harvest * 0.6;
+                        else if (th.targetNode.resType === 'stone') state.resources.stone += harvest * 0.5;
+                        else if (th.targetNode.resType === 'iron') state.resources.iron += harvest * 0.35;
+                        else if (th.targetNode.resType === 'berry') state.resources.food += harvest * 0.65;
+
+                        const scale = Math.max(0.25, th.targetNode.amount / th.targetNode.maxAmount);
+                        th.targetNode.mesh.scale.set(scale, scale, scale);
+                    }
+                }
+            }
+        }
+    </script>
+
+    <script>
+        function getPointerIntersection(e) {
+            const rect = renderer.domElement.getBoundingClientRect();
+            mouseVec.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+            mouseVec.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+            raycaster.setFromCamera(mouseVec, camera);
+            return raycaster.intersectObjects(worldGroup.children, true);
+        }
+
+        function onPointerDown(e) {
+            pointerDownPos = { x: e.clientX, y: e.clientY };
+            prevPointer = { x: e.clientX, y: e.clientY };
+
+            if (e.button === 2) {
+                isDraggingCamera = true;
+                return;
+            }
+
+            const hits = getPointerIntersection(e);
+            if (state.activeTool === 'grab' && hits.length > 0) {
+                for (const h of hits) {
+                    let obj = h.object;
+                    while (obj) {
+                        if (obj.userData?.thronglet) {
+                            state.draggedThronglet = obj.userData.thronglet;
+                            playSound('chirp');
+                            showSpeechBubble(state.draggedThronglet, '✨ Schöpfer trägt mich!', true);
+                            inspectEntity(state.draggedThronglet);
+                            return;
+                        }
+                        obj = obj.parent;
+                    }
+                }
+            }
+            isDraggingCamera = true;
+        }
+
+        function onPointerMove(e) {
+            const hits = getPointerIntersection(e);
+            let hoveredTile = null;
+            for (const h of hits) {
+                let obj = h.object;
+                while (obj) {
+                    if (obj.userData?.tile) {
+                        hoveredTile = obj.userData.tile;
+                        break;
+                    }
+                    obj = obj.parent;
+                }
+                if (hoveredTile) break;
+            }
+
+            if (hoveredTile) {
+                hoverMarker.visible = true;
+                hoverMarker.position.set(hoveredTile.wx, (hoveredTile.hasBridge ? 0.64 : hoveredTile.height) + 0.04, hoveredTile.wz);
+                if (state.draggedThronglet && (hoveredTile.type !== 'water' || hoveredTile.hasBridge)) {
+                    state.draggedThronglet.mesh.position.set(hoveredTile.wx, hoveredTile.height + 0.85, hoveredTile.wz);
+                }
+            } else {
+                hoverMarker.visible = false;
+            }
+
+            if (isDraggingCamera && !state.draggedThronglet) {
+                const dx = e.clientX - prevPointer.x;
+                const dy = e.clientY - prevPointer.y;
+                camAngle -= dx * 0.007;
+                camPitch = Math.max(0.32, Math.min(1.25, camPitch + dy * 0.006));
+                updateCameraPosition();
+                prevPointer = { x: e.clientX, y: e.clientY };
+            }
+        }
+
+        function onPointerUp(e) {
+            if (state.draggedThronglet) {
+                const t = getTileAtWorld(state.draggedThronglet.mesh.position.x, state.draggedThronglet.mesh.position.z);
+                if (t) {
+                    state.draggedThronglet.mesh.position.y = t.hasBridge ? 0.62 : t.height;
+                    state.draggedThronglet.targetPos = null;
+                }
+                state.draggedThronglet = null;
+                isDraggingCamera = false;
+                return;
+            }
+
+            const moveDist = Math.hypot(e.clientX - pointerDownPos.x, e.clientY - pointerDownPos.y);
+            isDraggingCamera = false;
+            if (moveDist > 6 || e.button === 2) return;
+
+            const hits = getPointerIntersection(e);
+            let clickedTile = null;
+            for (const h of hits) {
+                let obj = h.object;
+                while (obj) {
+                    if (obj.userData?.entity && state.activeTool === 'grab') {
+                        inspectEntity(obj.userData.entity);
+                        return;
+                    }
+                    if (obj.userData?.tile && !clickedTile) {
+                        clickedTile = obj.userData.tile;
+                    }
+                    obj = obj.parent;
+                }
+            }
+
+            if (clickedTile) handleTileAction(clickedTile);
+        }
+
+        function handleTileAction(tile) {
+            const tool = state.activeTool;
+            if (tool === 'grab') {
+                if (tile.building) inspectEntity(tile.building);
+                else if (tile.resourceNode) inspectEntity(tile.resourceNode);
+                return;
+            }
+            if (tool === 'bless') {
+                if (state.resources.knowledge < 10) {
+                    logEvent('Benötigt 10 Erkenntnis für Göttlichen Segen!', 'text-rose-400');
+                    return;
+                }
+                state.resources.knowledge -= 10;
+                state.blessCount++;
+                state.thronglets.forEach(th => {
+                    th.health = 100;
+                    th.happiness = 100;
+                    th.disease = null;
+                });
+                playSound('bless');
+                if (state.blessCount >= 5) unlockAchievement('divine_hand');
+                logEvent('✨ Göttlicher Segen hat alle Thronglets geheilt und gestärkt!', 'text-cyan-300');
+                updateHUD();
+                return;
+            }
+            if (tool === 'plant_forest') {
+                if (state.resources.water < 12) {
+                    logEvent('Benötigt 12 Wasser zum Aufforsten!', 'text-rose-400');
+                    return;
+                }
+                if (spawnResourceNode(tile, 'forest', 0.6)) {
+                    state.resources.water -= 12;
+                    state.plantedTreesCount++;
+                    if (state.plantedTreesCount >= 3) unlockAchievement('forester');
+                    playSound('build');
+                    updateHUD();
+                }
+                return;
+            }
+            if (tool === 'dig_water') {
+                if (tile.building || tile.type === 'plaza') return;
+                if (tile.resourceNode) removeResourceNode(tile.resourceNode);
+                if (tile.roadMesh) { worldGroup.remove(tile.roadMesh); tile.roadMesh = null; tile.roadTier = 0; }
+                tile.type = 'water';
+                tile.height = 0.28;
+                tile.topCap.material = state.materials.water;
+                tile.topCap.position.y = tile.height * 0.85;
+                refreshAllBridgesAndConnections();
+                playSound('build');
+                return;
+            }
+            if (tool === 'fill_land') {
+                if (tile.type !== 'water') return;
+                if (state.resources.stone < 6) {
+                    logEvent('Benötigt 6 Stein zum Aufschütten von Wasser!', 'text-rose-400');
+                    return;
+                }
+                state.resources.stone -= 6;
+                if (tile.hasBridge) {
+                    tile.hasBridge = false;
+                    updateSingleBridgeMesh(tile);
+                }
+                tile.type = 'grass';
+                tile.height = 0.55;
+                tile.topCap.material = new THREE.MeshStandardMaterial({ map: state.textures.grass, roughness: 0.88 });
+                tile.topCap.position.y = tile.height * 0.85;
+                refreshAllBridgesAndConnections();
+                playSound('build');
+                updateHUD();
+                return;
+            }
+
+            const def = BUILDINGS[tool];
+            if (def) {
+                if (def.isRoad) buildRoadOnTile(tile, tool);
+                else if (def.isBridge) buildBridgeOnTile(tile);
+                else placeBuildingOnTile(tile, tool);
+            }
+        }
+
+        function inspectEntity(ent) {
+            const panel = document.getElementById('inspector-panel');
+            const title = document.getElementById('insp-title');
+            const body = document.getElementById('insp-body');
+            panel.classList.remove('hidden');
+
+            if (ent.hunger !== undefined) {
+                title.textContent = 'Thronglet: ' + ent.name;
+                body.innerHTML = `
+                    <div>Status: <span class="text-cyan-300 font-semibold">${ent.stateLabel}</span></div>
+                    <div>Nahrung: <span class="font-mono">${Math.round(ent.hunger)}%</span> • Wasser: <span class="font-mono">${Math.round(ent.thirst)}%</span></div>
+                    <div class="text-[11px] text-slate-400">Tipp: Halte die Maustaste im Greifen-Modus gedrückt, um ${ent.name} zu versetzen.</div>
+                `;
+            } else if (ent.resType) {
+                title.textContent = ent.label;
+                body.innerHTML = `<div>Vorkommen: <span class="font-mono text-emerald-300">${Math.round(ent.amount)} / ${ent.maxAmount}</span></div>`;
+            } else {
+                title.textContent = ent.name;
+                const connBadge = ent.connected
+                    ? '<span class="text-emerald-400 font-semibold">✓ An Straße angebunden (Aktiv)</span>'
+                    : '<span class="text-rose-400 font-semibold">⚠ Keine Straße angrenzend (Inaktiv)</span>';
+                body.innerHTML = `<div>${connBadge}</div>`;
+            }
+        }
+
+        function closeInspector() {
+            document.getElementById('inspector-panel').classList.add('hidden');
+        }
+    </script>
+
+    <script>
+        function setBuildCategory(cat) {
+            state.activeCategory = cat;
+            ['god', 'roads', 'buildings'].forEach(c => {
+                const btn = document.getElementById('cat-' + c);
+                if (c === cat) {
+                    btn.className = 'px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 bg-cyan-500/25 text-cyan-200 border border-cyan-400/40';
+                } else {
+                    btn.className = 'px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 text-slate-300 hover:text-white';
+                }
+            });
+            renderBuildButtons();
+        }
+
+        function selectTool(tool) {
+            state.activeTool = tool;
+            renderBuildButtons();
+        }
+
+        function renderBuildButtons() {
+            const container = document.getElementById('toolbar-items');
+            if (!container) return;
+            container.innerHTML = '';
+
+            if (state.activeCategory === 'god') {
+                const godTools = [
+                    { id: 'grab', name: 'Greifen / Info', icon: 'ph-hand-grabbing', sub: 'Thronglets ziehen' },
+                    { id: 'bless', name: 'Segnen', icon: 'ph-sparkle', sub: '10 Erkenntnis' },
+                    { id: 'plant_forest', name: 'Aufforsten', icon: 'ph-tree-evergreen', sub: '12 Wasser' }
+                ];
+                godTools.forEach(t => {
+                    const active = state.activeTool === t.id ? 'tool-active' : '';
+                    container.innerHTML += `
+                        <button onclick="selectTool('${t.id}')" class="btn-game ${active} px-3 py-2 rounded-xl bg-slate-900/90 border border-slate-700/80 flex items-center gap-2 whitespace-nowrap">
+                            <i class="ph-fill ${t.icon} text-cyan-300 text-lg"></i>
+                            <div class="text-left">
+                                <div class="text-xs font-bold text-white">${t.name}</div>
+                                <div class="text-[10px] text-slate-400">${t.sub}</div>
+                            </div>
+                        </button>
+                    `;
+                });
+            } else if (state.activeCategory === 'roads') {
+                const roadTools = ['dirt_path', 'gravel_road', 'paved_road', 'wood_bridge'];
+                roadTools.forEach(key => {
+                    const def = BUILDINGS[key];
+                    if (def.reqTech && !TECH_TREE.find(t => t.id === def.reqTech)?.unlocked) return;
+                    const active = state.activeTool === key ? 'tool-active' : '';
+                    container.innerHTML += `
+                        <button onclick="selectTool('${key}')" class="btn-game ${active} px-3 py-2 rounded-xl bg-slate-900/90 border border-slate-700/80 flex items-center gap-2 whitespace-nowrap">
+                            <i class="ph-fill ${def.icon} text-amber-300 text-lg"></i>
+                            <div class="text-left">
+                                <div class="text-xs font-bold text-white">${def.name}</div>
+                                <div class="text-[10px] text-slate-400 font-mono">${def.cost.wood}H ${def.cost.stone}S</div>
+                            </div>
+                        </button>
+                    `;
+                });
+                // Water dig & fill
+                const digAct = state.activeTool === 'dig_water' ? 'tool-active' : '';
+                const fillAct = state.activeTool === 'fill_land' ? 'tool-active' : '';
+                container.innerHTML += `
+                    <button onclick="selectTool('dig_water')" class="btn-game ${digAct} px-3 py-2 rounded-xl bg-slate-900/90 border border-slate-700/80 flex items-center gap-2 whitespace-nowrap">
+                        <i class="ph-fill ph-waves text-sky-400 text-lg"></i>
+                        <div class="text-left"><div class="text-xs font-bold text-white">Wassergraben</div><div class="text-[10px] text-slate-400">Fluss anlegen</div></div>
+                    </button>
+                    <button onclick="selectTool('fill_land')" class="btn-game ${fillAct} px-3 py-2 rounded-xl bg-slate-900/90 border border-slate-700/80 flex items-center gap-2 whitespace-nowrap">
+                        <i class="ph-fill ph-shovel text-emerald-400 text-lg"></i>
+                        <div class="text-left"><div class="text-xs font-bold text-white">Aufschütten</div><div class="text-[10px] text-slate-400">6 Stein -> Wiese</div></div>
+                    </button>
+                `;
+            } else {
+                Object.keys(BUILDINGS).forEach(key => {
+                    const def = BUILDINGS[key];
+                    if (def.isRoad || def.isBridge) return;
+                    if (def.reqTech && !TECH_TREE.find(t => t.id === def.reqTech)?.unlocked) return;
+                    const active = state.activeTool === key ? 'tool-active' : '';
+                    container.innerHTML += `
+                        <button onclick="selectTool('${key}')" class="btn-game ${active} px-3 py-2 rounded-xl bg-slate-900/90 border border-slate-700/80 flex items-center gap-2 whitespace-nowrap" title="${def.desc}">
+                            <i class="ph-fill ${def.icon} text-cyan-300 text-lg"></i>
+                            <div class="text-left">
+                                <div class="text-xs font-bold text-white">${def.name}</div>
+                                <div class="text-[10px] text-slate-400 font-mono">${def.cost.wood}H ${def.cost.stone}S ${def.cost.iron ? def.cost.iron + 'E' : ''}</div>
+                            </div>
+                        </button>
+                    `;
+                });
+            }
+        }
+
+        function updateHUD() {
+            document.getElementById('res-pop').textContent = `${state.thronglets.length}/${state.popCap}`;
+            document.getElementById('res-wood').textContent = Math.floor(state.resources.wood);
+            document.getElementById('res-stone').textContent = Math.floor(state.resources.stone);
+            document.getElementById('res-iron').textContent = Math.floor(state.resources.iron);
+            document.getElementById('res-food').textContent = Math.floor(state.resources.food);
+            document.getElementById('res-water').textContent = Math.floor(state.resources.water);
+            document.getElementById('res-knowledge').textContent = Math.floor(state.resources.knowledge);
+
+            if (state.resources.wood >= 300 && state.resources.food >= 300) unlockAchievement('wealthy');
+        }
+
+        function logEvent(msg, cls = 'text-slate-200') {
+            const box = document.getElementById('event-log');
+            if (!box) return;
+            const d = document.createElement('div');
+            d.className = cls;
+            d.textContent = msg;
+            box.prepend(d);
+        }
+
+        function setGameSpeed(spd) {
+            state.gameSpeed = spd;
+            [1, 2, 4].forEach(s => {
+                const b = document.getElementById('spd-' + s);
+                b.className = s === spd
+                    ? 'px-2 py-1 rounded-lg text-xs font-mono bg-cyan-500/30 text-cyan-200 font-bold'
+                    : 'px-2 py-1 rounded-lg text-xs font-mono text-slate-400 hover:text-white';
+            });
+        }
+
+        function openModal(id) {
+            if (id === 'tech-modal') renderTechModal();
+            if (id === 'ach-modal') renderAchModal();
+            const m = document.getElementById(id);
+            m.classList.remove('hidden');
+            m.classList.add('flex');
+        }
+
+        function closeModal(id) {
+            const m = document.getElementById(id);
+            m.classList.add('hidden');
+            m.classList.remove('flex');
+        }
+
+        function renderTechModal() {
+            const list = document.getElementById('tech-list');
+            list.innerHTML = '';
+            TECH_TREE.forEach(t => {
+                const canAfford = state.resources.knowledge >= t.cost;
+                list.innerHTML += `
+                    <div class="p-3.5 rounded-2xl bg-slate-900/90 border ${t.unlocked ? 'border-emerald-500/50' : 'border-slate-800'} flex flex-col justify-between gap-2">
+                        <div>
+                            <div class="flex items-center justify-between">
+                                <span class="text-xs font-bold text-white">${t.name}</span>
+                                <span class="text-[10px] font-mono px-2 py-0.5 rounded bg-purple-500/20 text-purple-300">${t.branch} • ${t.era}</span>
+                            </div>
+                            <p class="text-xs text-slate-400 mt-1">${t.desc}</p>
+                        </div>
+                        <div class="flex items-center justify-between pt-2 border-t border-slate-800/80">
+                            <span class="text-xs font-mono text-purple-300">${t.cost} Erkenntnis</span>
+                            ${t.unlocked
+                                ? '<span class="text-xs font-bold text-emerald-400">✓ Erforscht</span>'
+                                : `<button onclick="unlockTech('${t.id}')" class="btn-game px-3 py-1 rounded-xl text-xs font-bold ${canAfford ? 'bg-purple-600 hover:bg-purple-500 text-white' : 'bg-slate-800 text-slate-500'}">Erforschen</button>`
+                            }
+                        </div>
+                    </div>
+                `;
+            });
+        }
+
+        function unlockTech(id) {
+            const t = TECH_TREE.find(x => x.id === id);
+            if (!t || t.unlocked || state.resources.knowledge < t.cost) return;
+            state.resources.knowledge -= t.cost;
+            t.unlocked = true;
+            document.getElementById('era-badge').textContent = t.era;
+            playSound('bless');
+            logEvent(`🔬 Technologie erforscht: ${t.name}!`, 'text-purple-300');
+
+            const count = TECH_TREE.filter(x => x.unlocked).length;
+            if (count >= 3) unlockAchievement('tech_3');
+            if (count >= 8) unlockAchievement('tech_8');
+
+            renderTechModal();
+            renderBuildButtons();
+            updateHUD();
+        }
+
+        function unlockAchievement(id) {
+            const a = ACHIEVEMENTS.find(x => x.id === id);
+            if (!a || a.done) return;
+            a.done = true;
+            const doneCount = ACHIEVEMENTS.filter(x => x.done).length;
+            document.getElementById('ach-count').textContent = `${doneCount}/${ACHIEVEMENTS.length}`;
+            logEvent(`🏆 Meilenstein erreicht: ${a.name}!`, 'text-amber-300 font-bold');
+        }
+
+        function checkBuildingAchievements() {
+            const types = state.buildings.map(b => b.type);
+            if (types.includes('farm') && types.includes('windmill') && types.includes('bakery')) unlockAchievement('bread_chain');
+            if (types.includes('fisher_hut')) unlockAchievement('fisher_king');
+            if (types.includes('herbalist')) unlockAchievement('healer_built');
+            if (types.filter(t => t === 'lantern').length >= 3) unlockAchievement('night_lights');
+            if (types.includes('synth_core')) unlockAchievement('ascension');
+        }
+
+        function renderAchModal() {
+            const list = document.getElementById('ach-list');
+            list.innerHTML = '';
+            ACHIEVEMENTS.forEach(a => {
+                list.innerHTML += `
+                    <div class="p-3 rounded-2xl bg-slate-900/90 border ${a.done ? 'border-amber-500/50' : 'border-slate-800'} flex items-center gap-3">
+                        <div class="w-9 h-9 rounded-xl ${a.done ? 'bg-amber-500/20 text-amber-300' : 'bg-slate-800 text-slate-600'} flex items-center justify-center">
+                            <i class="ph-fill ph-trophy text-lg"></i>
+                        </div>
+                        <div>
+                            <div class="text-xs font-bold ${a.done ? 'text-white' : 'text-slate-400'}">${a.name}</div>
+                            <div class="text-[11px] text-slate-500">${a.desc}</div>
+                        </div>
+                    </div>
+                `;
+            });
+        }
+
+        // Main Menu & Save/Load Functions
+        function openMainMenu(canClose = true) {
+            state.isPaused = true;
+            const modal = document.getElementById('main-menu-modal');
+            const resumeBtn = document.getElementById('btn-resume-game');
+            const closeBtn = document.getElementById('close-menu-btn');
+
+            if (state.gameStarted && canClose) {
+                resumeBtn.classList.remove('hidden');
+                closeBtn.classList.remove('hidden');
+            } else {
+                resumeBtn.classList.add('hidden');
+                closeBtn.classList.add('hidden');
+            }
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            renderSaveSlotsUI();
+        }
+
+        function resumeGame() {
+            state.gameStarted = true;
+            state.isPaused = false;
+            const modal = document.getElementById('main-menu-modal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        }
+
+        function clearWorldEntities() {
+            while (worldGroup.children.length > 0) {
+                worldGroup.remove(worldGroup.children[0]);
+            }
+            document.getElementById('speech-container').innerHTML = '';
+            state.tiles = [];
+            state.thronglets = [];
+            state.buildings = [];
+            state.resourceNodes = [];
+            state.selectedEntity = null;
+            closeInspector();
+        }
+
+        function startNewGame() {
+            clearWorldEntities();
+            state.resources = { wood: 140, stone: 100, iron: 25, food: 160, water: 125, knowledge: 35 };
+            state.popCap = 2;
+            state.timeOfDay = 8.0;
+            state.isNight = false;
+            TECH_TREE.forEach(t => t.unlocked = false);
+            ACHIEVEMENTS.forEach(a => a.done = false);
+            document.getElementById('era-badge').textContent = 'EP. I';
+            document.getElementById('ach-count').textContent = `0/${ACHIEVEMENTS.length}`;
+
+            generateProceduralWorld();
+            for (let i = 0; i < 6; i++) {
+                const angle = (i / 6) * Math.PI * 2;
+                spawnThronglet(Math.cos(angle) * 2.4, Math.sin(angle) * 2.4);
+            }
+
+            renderBuildButtons();
+            updateHUD();
+            resetCamera();
+            resumeGame();
+            logEvent('✨ Eine neue Welt wurde erschaffen! Baue Wege und führe deine Thronglets.', 'text-cyan-300');
+        }
+
+        function serializeGameState() {
+            const tilesData = [];
+            for (let gx = 0; gx < GRID_SIZE; gx++) {
+                for (let gz = 0; gz < GRID_SIZE; gz++) {
+                    const t = state.tiles[gx][gz];
+                    tilesData.push({
+                        gx, gz,
+                        type: t.type,
+                        height: t.height,
+                        roadType: t.roadType,
+                        hasBridge: t.hasBridge,
+                        buildingType: t.building ? t.building.type : null,
+                        resNode: t.resourceNode ? { resType: t.resourceNode.resType, amount: t.resourceNode.amount } : null
+                    });
+                }
+            }
+            const throngletsData = state.thronglets.map(th => ({
+                name: th.name, x: th.mesh.position.x, z: th.mesh.position.z,
+                hunger: th.hunger, thirst: th.thirst
+            }));
+            return {
+                timestamp: new Date().toLocaleString('de-DE'),
+                popCount: state.thronglets.length,
+                era: document.getElementById('era-badge').textContent,
+                resources: { ...state.resources },
+                timeOfDay: state.timeOfDay,
+                unlockedTechs: TECH_TREE.filter(t => t.unlocked).map(t => t.id),
+                unlockedAchs: ACHIEVEMENTS.filter(a => a.done).map(a => a.id),
+                tilesData,
+                throngletsData
+            };
+        }
+
+        function loadFromSerializedState(data) {
+            if (!data || !data.tilesData) return false;
+            clearWorldEntities();
+            state.resources = { ...data.resources };
+            state.timeOfDay = data.timeOfDay || 8.0;
+
+            TECH_TREE.forEach(t => t.unlocked = Array.isArray(data.unlockedTechs) && data.unlockedTechs.includes(t.id));
+            ACHIEVEMENTS.forEach(a => a.done = Array.isArray(data.unlockedAchs) && data.unlockedAchs.includes(a.id));
+
+            document.getElementById('era-badge').textContent = data.era || 'EP. I';
+            const doneCount = ACHIEVEMENTS.filter(a => a.done).length;
+            document.getElementById('ach-count').textContent = `${doneCount}/${ACHIEVEMENTS.length}`;
+
+            const half = (GRID_SIZE * TILE_SIZE) / 2 - TILE_SIZE / 2;
+            for (let gx = 0; gx < GRID_SIZE; gx++) state.tiles[gx] = [];
+
+            for (const td of data.tilesData) {
+                const { gx, gz, type, height } = td;
+                const wx = gx * TILE_SIZE - half;
+                const wz = gz * TILE_SIZE - half;
+                const tileGroup = new THREE.Group();
+                const dirtBase = new THREE.Mesh(
+                    new THREE.BoxGeometry(TILE_SIZE * 0.99, height * 0.75, TILE_SIZE * 0.99),
+                    new THREE.MeshStandardMaterial({ color: 0x3f2e21, roughness: 0.95 })
+                );
+                dirtBase.position.y = (height * 0.75) / 2;
+                tileGroup.add(dirtBase);
+
+                const topMat = type === 'water'
+                    ? state.materials.water
+                    : type === 'plaza'
+                        ? new THREE.MeshStandardMaterial({ map: state.textures.paved_road, color: 0x94a3b8 })
+                        : new THREE.MeshStandardMaterial({ map: state.textures.grass, roughness: 0.88 });
+
+                const topCap = new THREE.Mesh(new THREE.BoxGeometry(TILE_SIZE * 0.97, height * 0.3, TILE_SIZE * 0.97), topMat);
+                topCap.position.y = height * 0.85;
+                tileGroup.add(topCap);
+                tileGroup.position.set(wx, 0, wz);
+
+                const tileObj = {
+                    gx, gz, wx, wz, type, height,
+                    mesh: tileGroup, dirtBase, topCap,
+                    roadTier: type === 'plaza' ? 3 : 0,
+                    roadType: type === 'plaza' ? 'paved_road' : null,
+                    roadMesh: null, hasBridge: false, bridgeMesh: null,
+                    building: null, resourceNode: null
+                };
+                tileGroup.userData.tile = tileObj;
+                topCap.userData.tile = tileObj;
+                dirtBase.userData.tile = tileObj;
+                worldGroup.add(tileGroup);
+                state.tiles[gx][gz] = tileObj;
+            }
+
+            for (const td of data.tilesData) {
+                const tile = state.tiles[td.gx][td.gz];
+                if (td.roadType && td.type !== 'plaza') buildRoadOnTile(tile, td.roadType, true);
+                if (td.hasBridge) buildBridgeOnTile(tile, true);
+                if (td.resNode) {
+                    const n = spawnResourceNode(tile, td.resNode.resType, 1.0);
+                    if (n) n.amount = td.resNode.amount;
+                }
+                if (td.buildingType) {
+                    if (td.buildingType === 'shrine') placeShrine(tile);
+                    else placeBuildingOnTile(tile, td.buildingType, true);
+                }
+            }
+
+            refreshAllBridgesAndConnections();
+            if (Array.isArray(data.throngletsData)) {
+                data.throngletsData.forEach(thd => {
+                    const th = spawnThronglet(thd.x, thd.z);
+                    th.name = thd.name || th.name;
+                    th.hunger = thd.hunger ?? 90;
+                    th.thirst = thd.thirst ?? 90;
+                });
+            }
+
+            renderBuildButtons();
+            updateHUD();
+            resumeGame();
+            logEvent('💾 Spielstand erfolgreich geladen!', 'text-emerald-400');
+            return true;
+        }
+
+        async function saveGameToSlot(slotNum) {
+            if (!state.gameStarted) startNewGame();
+            const saveObj = serializeGameState();
+            await window.saveSlotToCloud(slotNum, saveObj);
+            document.getElementById('save-status-badge').textContent = `Slot ${slotNum} gespeichert ✓`;
+            playSound('bless');
+        }
+
+        function loadGameFromSlot(slotNum) {
+            const slotData = window.cloudStore?.slots?.[slotNum];
+            if (slotData) loadFromSerializedState(slotData);
+        }
+
+        function exportSaveCode() {
+            if (!state.gameStarted) startNewGame();
+            const code = btoa(encodeURIComponent(JSON.stringify(serializeGameState())));
+            const input = document.getElementById('save-code-input');
+            input.value = code;
+            input.select();
+            document.execCommand('copy');
+            document.getElementById('save-status-badge').textContent = 'Code kopiert ✓';
+        }
+
+        function importSaveCode() {
+            const raw = document.getElementById('save-code-input').value.trim();
+            if (!raw) return;
+            try {
+                loadFromSerializedState(JSON.parse(decodeURIComponent(atob(raw))));
+            } catch (e) {
+                document.getElementById('save-status-badge').textContent = 'Ungültiger Code!';
+            }
+        }
+
+        window.renderSaveSlotsUI = function() {
+            const container = document.getElementById('save-slots-container');
+            if (!container) return;
+            container.innerHTML = '';
+            for (let slot = 1; slot <= 3; slot++) {
+                const data = window.cloudStore?.slots?.[slot];
+                container.innerHTML += `
+                    <div class="p-3 rounded-2xl bg-slate-900/80 border border-slate-800 flex items-center justify-between gap-2">
+                        <div>
+                            <div class="text-xs font-bold text-white">Speicherplatz ${slot} ${data ? `<span class="text-[10px] px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-300 font-mono ml-1">${data.era} • ${data.popCount} Thronglets</span>` : ''}</div>
+                            <div class="text-[11px] text-slate-400 font-mono">${data ? 'Gespeichert: ' + data.timestamp : 'Leer – Noch kein Spielstand'}</div>
+                        </div>
+                        <div class="flex items-center gap-1.5">
+                            <button onclick="saveGameToSlot(${slot})" class="btn-game px-3 py-1.5 rounded-xl bg-cyan-600/30 hover:bg-cyan-600/50 border border-cyan-500/40 text-cyan-200 text-xs font-semibold">Speichern</button>
+                            <button onclick="loadGameFromSlot(${slot})" ${data ? '' : 'disabled'} class="btn-game px-3 py-1.5 rounded-xl text-xs font-semibold ${data ? 'bg-emerald-600 hover:bg-emerald-500 text-white' : 'bg-slate-800 text-slate-600 cursor-not-allowed'}">Laden</button>
+                        </div>
+                    </div>
+                `;
+            }
+        };
+
+        // Main Game Loop
+        let lastFrameTime = performance.now();
+        let hudTimer = 0;
+        let reproTimer = 0;
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const now = performance.now();
+            const rawDt = Math.min(0.1, (now - lastFrameTime) / 1000);
+            lastFrameTime = now;
+            const dt = state.isPaused ? 0 : rawDt * state.gameSpeed;
+
+            // Animate water texture
+            if (state.textures.water) {
+                state.textures.water.offset.x += rawDt * 0.04;
+                state.textures.water.offset.y += rawDt * 0.02;
+            }
+
+            // Rotate shrine crystal & windmill blades
+            state.buildings.forEach(b => {
+                if (b.crystal) b.crystal.rotation.y += rawDt * 1.2;
+                if (b.bladesMesh && b.connected) b.bladesMesh.rotation.z += rawDt * 1.8;
+            });
+
+            if (dt > 0) {
+                // Day / Night cycle
+                state.timeOfDay = (state.timeOfDay + dt * 0.22) % 24;
+                state.isNight = state.timeOfDay >= 20 || state.timeOfDay < 6;
+                const hrs = Math.floor(state.timeOfDay).toString().padStart(2, '0');
+                const mins = Math.floor((state.timeOfDay % 1) * 60).toString().padStart(2, '0');
+                document.getElementById('time-clock').textContent = `${hrs}:${mins}`;
+                document.getElementById('time-icon').className = state.isNight
+                    ? 'ph-fill ph-moon-stars text-indigo-300 text-sm'
+                    : 'ph-fill ph-sun text-amber-400 text-sm';
+
+                sunLight.intensity = state.isNight ? 0.22 : 1.15;
+                ambientLight.intensity = state.isNight ? 0.3 : 0.65;
+
+                // Building production (only when connected to road!)
+                state.buildings.forEach(b => {
+                    if (!b.connected) return;
+                    const def = BUILDINGS[b.type];
+                    if (def && def.prod) {
+                        Object.entries(def.prod).forEach(([res, rate]) => {
+                            let mult = res === 'food' ? state.weather.cropMod : 1.0;
+                            state.resources[res] += rate * mult * dt * 0.25;
+                        });
+                    }
+                });
+
+                // Forest regrowth
+                state.resourceNodes.forEach(n => {
+                    if (n.resType === 'forest' && n.amount < n.maxAmount) {
+                        n.amount = Math.min(n.maxAmount, n.amount + dt * 1.2);
+                        const s = Math.max(0.25, n.amount / n.maxAmount);
+                        n.mesh.scale.set(s, s, s);
+                    }
+                });
+
+                // Population reproduction
+                reproTimer += dt;
+                if (reproTimer > 16) {
+                    reproTimer = 0;
+                    if (state.thronglets.length < state.popCap && state.resources.food > 50 && state.resources.water > 40) {
+                        const t = spawnThronglet((Math.random() - 0.5) * 4, (Math.random() - 0.5) * 4);
+                        logEvent(`👶 Ein neuer Thronglet (${t.name}) wurde geboren!`, 'text-emerald-300');
+                    }
+                }
+
+                updateThronglets(dt);
+
+                hudTimer += dt;
+                if (hudTimer > 0.5) {
+                    hudTimer = 0;
+                    updateHUD();
+                }
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        window.onload = function() {
+            initThreeJS();
+            startNewGame();
+            openMainMenu(true);
+            animate();
+        };
+    </script>
+</body>
+</html>
