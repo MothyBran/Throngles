@@ -727,6 +727,92 @@
             return false;
         }
 
+
+        function findPath(startX, startZ, endX, endZ) {
+            const openSet = [];
+            const closedSet = new Set();
+            const cameFrom = new Map();
+            const gScore = new Map();
+            const fScore = new Map();
+
+            const startTile = getTileAtGrid(startX, startZ);
+            const endTile = getTileAtGrid(endX, endZ);
+
+            if (!startTile || !endTile) return null;
+
+            const tileId = (t) => t.gx + ',' + t.gz;
+
+            openSet.push(startTile);
+            gScore.set(tileId(startTile), 0);
+            fScore.set(tileId(startTile), Math.hypot(endX - startX, endZ - startZ));
+
+            while (openSet.length > 0) {
+                // Find node with lowest fScore
+                let current = openSet[0];
+                let currentIdx = 0;
+                for (let i = 1; i < openSet.length; i++) {
+                    if (fScore.get(tileId(openSet[i])) < fScore.get(tileId(current))) {
+                        current = openSet[i];
+                        currentIdx = i;
+                    }
+                }
+
+                if (current === endTile) {
+                    const path = [];
+                    let curr = current;
+                    while (cameFrom.has(tileId(curr))) {
+                        path.unshift(curr);
+                        curr = cameFrom.get(tileId(curr));
+                    }
+                    return path;
+                }
+
+                openSet.splice(currentIdx, 1);
+                closedSet.add(tileId(current));
+
+                // Neighbors (4-way)
+                const neighbors = [];
+                const dirs = [[0,1], [1,0], [0,-1], [-1,0]];
+                for (const d of dirs) {
+                    const nx = current.gx + d[0];
+                    const nz = current.gz + d[1];
+                    const nb = getTileAtGrid(nx, nz);
+                    if (nb) {
+                        // Can we walk on it?
+                        // Water is impassable unless it has a bridge or it's the target tile (e.g. fishing/digging)
+                        if (nb !== endTile && nb.type === 'water' && !nb.hasBridge) continue;
+                        neighbors.push(nb);
+                    }
+                }
+
+                for (const neighbor of neighbors) {
+                    if (closedSet.has(tileId(neighbor))) continue;
+
+                    // Cost calculation: prefer roads.
+                    // Road tier 3 is very cheap, dirt is cheap, grass is normal.
+                    let cost = 1.0;
+                    if (neighbor.roadTier === 3) cost = 0.3;
+                    else if (neighbor.roadTier === 2) cost = 0.5;
+                    else if (neighbor.roadTier === 1) cost = 0.7;
+                    else if (neighbor.hasBridge) cost = 0.4;
+                    else if (neighbor.building && neighbor !== endTile) cost = 2.0; // avoid walking through buildings
+
+                    const tentative_gScore = gScore.get(tileId(current)) + cost;
+
+                    if (!openSet.includes(neighbor)) {
+                        openSet.push(neighbor);
+                    } else if (tentative_gScore >= gScore.get(tileId(neighbor))) {
+                        continue;
+                    }
+
+                    cameFrom.set(tileId(neighbor), current);
+                    gScore.set(tileId(neighbor), tentative_gScore);
+                    fScore.set(tileId(neighbor), tentative_gScore + Math.hypot(endX - neighbor.gx, endZ - neighbor.gz));
+                }
+            }
+            return null; // no path
+        }
+
         function isTileNearWater(tile) {
             const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]];
             for (const [dx, dz] of dirs) {
@@ -775,474 +861,93 @@
                         topMat = state.materials.water;
                     } else if (type === 'plaza') {
                         topMat = new THREE.MeshStandardMaterial({ map: state.textures.paved_road, color: 0x94a3b8, roughness: 0.65 });
-                    } else {
-                        topMat = new THREE.MeshStandardMaterial({
-                            map: state.textures.grass,
-                            color: (gx + gz) % 2 === 0 ? 0xffffff : 0xe2e8f0,
-                            roughness: 0.88
-                        });
-                    }
+                    } else if (type === 'well') {
+                const base = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 0.4, 8), stoneMat);
+                base.position.y = 0.2;
+                const water = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 0.41, 8), state.materials.water || new THREE.MeshBasicMaterial({color: 0x38bdf8}));
+                water.position.y = 0.2;
+                const roof = new THREE.Mesh(new THREE.ConeGeometry(0.6, 0.5, 4), roofMat);
+                roof.position.y = 1.0;
+                const pillar1 = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.8), woodMat);
+                pillar1.position.set(0.4, 0.6, 0);
+                const pillar2 = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.8), woodMat);
+                pillar2.position.set(-0.4, 0.6, 0);
+                base.castShadow = true; roof.castShadow = true;
+                g.add(base, water, roof, pillar1, pillar2);
+            } else if (type === 'market') {
+                const floor = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.1, 1.6), stoneMat);
+                floor.position.y = 0.05;
+                const stall1 = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.4, 0.4), woodMat);
+                stall1.position.set(-0.3, 0.3, 0.3);
+                const roof1 = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.05, 0.5), new THREE.MeshStandardMaterial({color: 0xef4444}));
+                roof1.position.set(-0.3, 0.8, 0.3);
+                roof1.rotation.x = 0.2;
+                const pillar1 = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.8), woodMat);
+                pillar1.position.set(-0.6, 0.4, 0.5);
+                const pillar2 = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.8), woodMat);
+                pillar2.position.set(0, 0.4, 0.5);
 
-                    const topCap = new THREE.Mesh(
-                        new THREE.BoxGeometry(TILE_SIZE * 0.97, height * 0.3, TILE_SIZE * 0.97),
-                        topMat
-                    );
-                    topCap.position.y = height * 0.85;
-                    topCap.receiveShadow = true;
-                    tileGroup.add(topCap);
+                const stall2 = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.4, 0.4), woodMat);
+                stall2.position.set(0.3, 0.3, -0.3);
+                stall2.rotation.y = Math.PI / 2;
 
-                    const decorGroup = new THREE.Group();
-                    tileGroup.add(decorGroup);
-                    tileGroup.position.set(wx, 0, wz);
+                floor.castShadow = true; stall1.castShadow = true; roof1.castShadow = true; stall2.castShadow = true;
+                g.add(floor, stall1, roof1, pillar1, pillar2, stall2);
+            } else if (type === 'lantern') {
+                const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.08, 1.2), stoneMat);
+                pole.position.y = 0.6;
+                const lamp = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.2, 0.2), new THREE.MeshStandardMaterial({color: 0xfef08a, emissive: 0xfde047, emissiveIntensity: 0.8}));
+                lamp.position.y = 1.3;
+                pole.castShadow = true;
 
-                    const tileObj = {
-                        gx, gz, wx, wz, type, height,
-                        mesh: tileGroup,
-                        dirtBase,
-                        topCap,
-                        decorGroup,
-                        roadTier: type === 'plaza' ? 3 : 0,
-                        roadType: type === 'plaza' ? 'paved_road' : null,
-                        roadMesh: null,
-                        hasBridge: false,
-                        bridgeMesh: null,
-                        building: null,
-                        resourceNode: null
-                    };
-                    tileGroup.userData.tile = tileObj;
-                    topCap.userData.tile = tileObj;
-                    dirtBase.userData.tile = tileObj;
-
-                    worldGroup.add(tileGroup);
-                    state.tiles[gx][gz] = tileObj;
-                }
-            }
-
-            // Place Shrine at Center
-            placeShrine(state.tiles[center][center]);
-
-            // Initial starter tent & well connected to central plaza
-            placeBuildingOnTile(state.tiles[center - 2][center], 'tent', true);
-            placeBuildingOnTile(state.tiles[center + 2][center], 'well', true);
-            buildRoadOnTile(state.tiles[center][center + 3], 'dirt_path', true);
-            buildBridgeOnTile(state.tiles[center][center + 4], true);
-
-            // Spawn Natural Resources (Forests, Rocks, Iron, Berry Bushes)
-            for (let gx = 0; gx < GRID_SIZE; gx++) {
-                for (let gz = 0; gz < GRID_SIZE; gz++) {
-                    const tile = state.tiles[gx][gz];
-                    const dist = Math.hypot(gx - center, gz - center);
-                    if (tile.type !== 'grass' || tile.building || tile.roadTier > 0 || dist < 3.5) continue;
-
-                    const r = Math.random();
-                    if (r < 0.16) spawnResourceNode(tile, 'forest');
-                    else if (r < 0.22) spawnResourceNode(tile, 'stone');
-                    else if (r < 0.25 && dist > 6) spawnResourceNode(tile, 'iron');
-                    else if (r < 0.29) spawnResourceNode(tile, 'berry');
-                }
-            }
-
-            refreshAllBridgesAndConnections();
-        }
-
-        function placeShrine(tile) {
-            if (!tile) return;
-            const g = new THREE.Group();
-            const baseMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.4 });
-            const goldMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, metalness: 0.7, roughness: 0.2 });
-            const crystalMat = new THREE.MeshStandardMaterial({ color: 0x22d3ee, emissive: 0x06b6d4, emissiveIntensity: 0.7 });
-
-            const p1 = new THREE.Mesh(new THREE.CylinderGeometry(0.75, 0.9, 0.35, 8), baseMat);
-            p1.position.y = 0.18;
-            const p2 = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.65, 0.45, 8), baseMat);
-            p2.position.y = 0.55;
-            const ring = new THREE.Mesh(new THREE.TorusGeometry(0.45, 0.05, 8, 24), goldMat);
-            ring.rotation.x = Math.PI / 2;
-            ring.position.y = 0.8;
-            const crystal = new THREE.Mesh(new THREE.OctahedronGeometry(0.35, 0), crystalMat);
-            crystal.position.y = 1.35;
-            crystal.castShadow = true;
-
-            g.add(p1, p2, ring, crystal);
-            g.position.set(tile.wx, tile.height, tile.wz);
-            worldGroup.add(g);
-
-            const bObj = {
-                type: 'shrine',
-                name: 'Schrein des Schöpfers',
-                tile,
-                mesh: g,
-                crystal,
-                connected: true
-            };
-            g.userData.entity = bObj;
-            tile.building = bObj;
-            state.buildings.push(bObj);
-        }
-
-        function spawnResourceNode(tile, resType, initialScale = 1.0) {
-            if (!tile || tile.building || tile.resourceNode || tile.type !== 'grass') return null;
-            const group = new THREE.Group();
-            let maxAmount = 120;
-            let label = 'Wald';
-
-            if (resType === 'forest') {
-                label = 'Dichter Wald';
-                maxAmount = 100;
-                const trunkMat = new THREE.MeshStandardMaterial({ color: 0x5c2d0c, roughness: 0.9 });
-                const leafMat1 = new THREE.MeshStandardMaterial({ color: 0x15803d, roughness: 0.75 });
-                const leafMat2 = new THREE.MeshStandardMaterial({ color: 0x16a34a, roughness: 0.7 });
-                const offsets = [[-0.35, -0.3], [0.38, 0.25], [-0.1, 0.42]];
-                offsets.forEach(([ox, oz], idx) => {
-                    const tree = new THREE.Group();
-                    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.11, 0.45, 6), trunkMat);
-                    trunk.position.y = 0.22;
-                    const cone1 = new THREE.Mesh(new THREE.ConeGeometry(0.42, 0.65, 7), idx % 2 === 0 ? leafMat1 : leafMat2);
-                    cone1.position.y = 0.58;
-                    cone1.castShadow = true;
-                    const cone2 = new THREE.Mesh(new THREE.ConeGeometry(0.3, 0.52, 7), leafMat2);
-                    cone2.position.y = 0.92;
-                    cone2.castShadow = true;
-                    tree.add(trunk, cone1, cone2);
-                    tree.position.set(ox, 0, oz);
-                    const s = 0.85 + (idx * 0.12);
-                    tree.scale.set(s, s, s);
-                    group.add(tree);
-                });
-            } else if (resType === 'stone') {
-                label = 'Felsvorkommen';
-                maxAmount = 160;
-                const rockMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, roughness: 0.85, flatShading: true });
-                const r1 = new THREE.Mesh(new THREE.DodecahedronGeometry(0.55, 0), rockMat);
-                r1.position.set(-0.2, 0.35, 0.1);
-                r1.castShadow = true;
-                const r2 = new THREE.Mesh(new THREE.DodecahedronGeometry(0.38, 0), rockMat);
-                r2.position.set(0.35, 0.25, -0.2);
-                r2.castShadow = true;
-                group.add(r1, r2);
-            } else if (resType === 'iron') {
-                label = 'Eisenmine';
-                maxAmount = 140;
-                const rockMat = new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.75, flatShading: true });
-                const oreMat = new THREE.MeshStandardMaterial({ color: 0x818cf8, emissive: 0x4f46e5, emissiveIntensity: 0.35, metalness: 0.8, roughness: 0.2 });
-                const baseRock = new THREE.Mesh(new THREE.DodecahedronGeometry(0.58, 0), rockMat);
-                baseRock.position.y = 0.38;
-                baseRock.castShadow = true;
-                group.add(baseRock);
-                for (let i = 0; i < 4; i++) {
-                    const crystal = new THREE.Mesh(new THREE.OctahedronGeometry(0.18, 0), oreMat);
-                    crystal.position.set((i - 1.5) * 0.22, 0.55 + (i % 2) * 0.15, (i % 2 === 0 ? 0.25 : -0.25));
-                    group.add(crystal);
-                }
-            } else if (resType === 'berry') {
-                label = 'Wildes Fruchtfeld';
-                maxAmount = 95;
-                const bushMat = new THREE.MeshStandardMaterial({ color: 0x16a34a, roughness: 0.8 });
-                const berryMat = new THREE.MeshStandardMaterial({ color: 0xf43f5e, emissive: 0xe11d48, emissiveIntensity: 0.25 });
-                for (let b = 0; b < 3; b++) {
-                    const bush = new THREE.Mesh(new THREE.SphereGeometry(0.32, 8, 8), bushMat);
-                    bush.position.set((b - 1) * 0.38, 0.26, (b % 2 === 0 ? 0.2 : -0.2));
-                    bush.castShadow = true;
-                    group.add(bush);
-                    const berry = new THREE.Mesh(new THREE.SphereGeometry(0.09, 6, 6), berryMat);
-                    berry.position.set(bush.position.x + 0.12, 0.48, bush.position.z + 0.1);
-                    group.add(berry);
-                }
-            }
-
-            group.position.set(tile.wx, tile.height, tile.wz);
-            group.scale.set(initialScale, initialScale, initialScale);
-            worldGroup.add(group);
-
-            const nodeObj = {
-                resType,
-                label,
-                amount: maxAmount * initialScale,
-                maxAmount,
-                regrowTimer: 0,
-                mesh: group,
-                tile
-            };
-            group.userData.entity = nodeObj;
-            tile.resourceNode = nodeObj;
-            state.resourceNodes.push(nodeObj);
-            return nodeObj;
-        }
-
-        function removeResourceNode(node) {
-            if (!node) return;
-            if (node.mesh) worldGroup.remove(node.mesh);
-            if (node.tile) node.tile.resourceNode = null;
-            const idx = state.resourceNodes.indexOf(node);
-            if (idx !== -1) state.resourceNodes.splice(idx, 1);
-        }
-
-        function buildRoadOnTile(tile, roadType, isFree = false) {
-            const def = BUILDINGS[roadType];
-            if (!def || !def.isRoad) return false;
-            if (tile.type === 'water') {
-                if (!isFree) logEvent('Straßen können nicht im Wasser gebaut werden! Nutze eine Holzbrücke.', 'text-amber-400');
-                return false;
-            }
-            if (tile.roadTier >= def.roadTier && !isFree) {
-                logEvent('Hier befindet sich bereits eine gleichwertige oder bessere Straße.', 'text-amber-400');
-                return false;
-            }
-            if (!isFree) {
-                if (state.resources.wood < def.cost.wood || state.resources.stone < def.cost.stone || state.resources.iron < def.cost.iron) {
-                    logEvent('Nicht genügend Ressourcen für ' + def.name + '!', 'text-rose-400');
-                    return false;
-                }
-                state.resources.wood -= def.cost.wood;
-                state.resources.stone -= def.cost.stone;
-                state.resources.iron -= def.cost.iron;
-            }
-
-            if (tile.resourceNode) removeResourceNode(tile.resourceNode);
-            if (tile.roadMesh) worldGroup.remove(tile.roadMesh);
-
-            const roadGroup = new THREE.Group();
-            const tex = state.textures[roadType] || state.textures.dirt_path;
-            const roadMat = new THREE.MeshStandardMaterial({ map: tex, roughness: def.roadTier === 3 ? 0.55 : 0.9 });
-            const slab = new THREE.Mesh(new THREE.BoxGeometry(TILE_SIZE * 0.92, 0.05, TILE_SIZE * 0.92), roadMat);
-            slab.position.set(tile.wx, tile.height + 0.025, tile.wz);
-            slab.receiveShadow = true;
-            roadGroup.add(slab);
-
-            if (def.roadTier === 3) {
-                const curbMat = new THREE.MeshStandardMaterial({ color: 0xcbd5e1, roughness: 0.6 });
-                const c1 = new THREE.Mesh(new THREE.BoxGeometry(TILE_SIZE * 0.95, 0.07, 0.08), curbMat);
-                c1.position.set(tile.wx, tile.height + 0.035, tile.wz - TILE_SIZE * 0.44);
-                const c2 = c1.clone();
-                c2.position.set(tile.wx, tile.height + 0.035, tile.wz + TILE_SIZE * 0.44);
-                roadGroup.add(c1, c2);
-            }
-
-            worldGroup.add(roadGroup);
-            tile.roadTier = def.roadTier;
-            tile.roadType = roadType;
-            tile.roadMesh = roadGroup;
-            refreshAllBridgesAndConnections();
-            if (!isFree) {
-                playSound('build');
-                unlockAchievement('first_road');
-                updateHUD();
-            }
-            return true;
-        }
-
-        function buildBridgeOnTile(tile, isFree = false) {
-            const def = BUILDINGS.wood_bridge;
-            if (tile.type !== 'water' || tile.hasBridge) {
-                if (!isFree) logEvent('Brücken können nur auf freien Wasserfeldern errichtet werden!', 'text-amber-400');
-                return false;
-            }
-            if (!isFree) {
-                if (state.resources.wood < def.cost.wood || state.resources.stone < def.cost.stone) {
-                    logEvent('Nicht genügend Holz oder Stein für eine Holzbrücke!', 'text-rose-400');
-                    return false;
-                }
-                state.resources.wood -= def.cost.wood;
-                state.resources.stone -= def.cost.stone;
-            }
-
-            tile.hasBridge = true;
-            refreshAllBridgesAndConnections();
-            if (!isFree) {
-                playSound('build');
-                unlockAchievement('bridge_builder');
-                updateHUD();
-            }
-            return true;
-        }
-
-        function updateSingleBridgeMesh(tile) {
-            if (tile.bridgeMesh) {
-                worldGroup.remove(tile.bridgeMesh);
-                tile.bridgeMesh = null;
-            }
-            if (!tile.hasBridge) return;
-
-            const g = new THREE.Group();
-            const deckY = 0.58;
-            const woodMat = new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.85 });
-            const railMat = new THREE.MeshStandardMaterial({ color: 0x92400e, roughness: 0.8 });
-
-            const deck = new THREE.Mesh(new THREE.BoxGeometry(TILE_SIZE * 0.98, 0.08, TILE_SIZE * 0.98), woodMat);
-            deck.position.set(tile.wx, deckY, tile.wz);
-            deck.receiveShadow = true;
-            g.add(deck);
-
-            // Check 4 neighbors: only place railings where neighbor is open water without bridge
-            const checkRailingSide = (dx, dz, isXAxis) => {
-                const nb = getTileAtGrid(tile.gx + dx, tile.gz + dz);
-                const needsRailing = nb && nb.type === 'water' && !nb.hasBridge;
-                if (!needsRailing) return;
-
-                const offset = (TILE_SIZE * 0.44);
-                const rx = tile.wx + dx * offset;
-                const rz = tile.wz + dz * offset;
-
-                const barGeo = isXAxis
-                    ? new THREE.BoxGeometry(0.08, 0.06, TILE_SIZE * 0.92)
-                    : new THREE.BoxGeometry(TILE_SIZE * 0.92, 0.06, 0.08);
-                const bar = new THREE.Mesh(barGeo, railMat);
-                bar.position.set(rx, deckY + 0.24, rz);
-                g.add(bar);
-
-                for (let p = -0.36; p <= 0.36; p += 0.72) {
-                    const post = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.3, 0.09), woodMat);
-                    post.position.set(
-                        isXAxis ? rx : tile.wx + p * TILE_SIZE,
-                        deckY + 0.15,
-                        isXAxis ? tile.wz + p * TILE_SIZE : rz
-                    );
-                    g.add(post);
-                }
-            };
-
-            checkRailingSide(1, 0, true);
-            checkRailingSide(-1, 0, true);
-            checkRailingSide(0, 1, false);
-            checkRailingSide(0, -1, false);
-
-            worldGroup.add(g);
-            tile.bridgeMesh = g;
-        }
-
-        function refreshAllBridgesAndConnections() {
-            for (let gx = 0; gx < GRID_SIZE; gx++) {
-                for (let gz = 0; gz < GRID_SIZE; gz++) {
-                    const t = state.tiles[gx]?.[gz];
-                    if (t && t.hasBridge) updateSingleBridgeMesh(t);
-                }
-            }
-
-            let cap = 2; // Shrine base capacity
-            state.buildings.forEach(b => {
-                if (b.type === 'shrine') {
-                    b.connected = true;
-                    return;
-                }
-                b.connected = isTileConnectedToRoad(b.tile);
-                if (b.warnMesh) b.warnMesh.visible = !b.connected;
-                const def = BUILDINGS[b.type];
-                if (def && def.popCap && b.connected) {
-                    cap += def.popCap;
-                }
-            });
-            state.popCap = cap;
-        }
-
-        function placeBuildingOnTile(tile, type, isFree = false) {
-            const def = BUILDINGS[type];
-            if (!def || !tile) return false;
-            if (tile.type !== 'grass' || tile.building) {
-                if (!isFree) logEvent('Dieses Feld ist bereits belegt oder ungeeignet!', 'text-amber-400');
-                return false;
-            }
-            if (def.nearWater && !isTileNearWater(tile)) {
-                if (!isFree) logEvent(def.name + ' muss direkt am Wasserufer gebaut werden!', 'text-amber-400');
-                return false;
-            }
-            if (!isFree) {
-                if (state.resources.wood < def.cost.wood || state.resources.stone < def.cost.stone || state.resources.iron < def.cost.iron) {
-                    logEvent('Nicht genügend Ressourcen für ' + def.name + '!', 'text-rose-400');
-                    return false;
-                }
-                state.resources.wood -= def.cost.wood;
-                state.resources.stone -= def.cost.stone;
-                state.resources.iron -= def.cost.iron;
-            }
-
-            if (tile.resourceNode) removeResourceNode(tile.resourceNode);
-
-            const g = new THREE.Group();
-            let bladesMesh = null;
-            let crystal = null;
-
-            const woodMat = new THREE.MeshStandardMaterial({ color: 0x78350f });
-            const stoneMat = new THREE.MeshStandardMaterial({ color: 0x64748b });
-            const whiteMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc });
-            const roofMat = new THREE.MeshStandardMaterial({ color: 0xb45309 });
-            const darkRoof = new THREE.MeshStandardMaterial({ color: 0x451a03 });
-
-            if (type === 'tent') {
-                const mat = new THREE.MeshStandardMaterial({ color: 0xf59e0b, roughness: 0.8 });
-                const cone = new THREE.Mesh(new THREE.ConeGeometry(0.72, 1.1, 6), mat);
-                cone.position.y = 0.55;
-                cone.castShadow = true;
-                g.add(cone);
-            } else if (type === 'hut') {
-                const wall = new THREE.Mesh(new THREE.BoxGeometry(1.15, 0.75, 1.15), woodMat);
-                wall.position.y = 0.38;
-                const roof = new THREE.Mesh(new THREE.ConeGeometry(0.95, 0.65, 4), roofMat);
-                roof.position.y = 1.05;
+                const light = new THREE.PointLight(0xfde047, 1.5, 5);
+                light.position.y = 1.3;
+                g.add(pole, lamp, light);
+            } else if (type === 'fisher_hut') {
+                const dock = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.2, 0.8), woodMat);
+                dock.position.y = 0.1;
+                const hut = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.8, 0.8), woodMat);
+                hut.position.set(-0.2, 0.6, 0);
+                const roof = new THREE.Mesh(new THREE.ConeGeometry(0.7, 0.5, 4), roofMat);
+                roof.position.set(-0.2, 1.25, 0);
                 roof.rotation.y = Math.PI / 4;
-                wall.castShadow = true; roof.castShadow = true;
-                g.add(wall, roof);
-            } else if (type === 'stone_house') {
-                const wall = new THREE.Mesh(new THREE.BoxGeometry(1.3, 1.0, 1.3), stoneMat);
-                wall.position.y = 0.5;
-                const roof = new THREE.Mesh(new THREE.ConeGeometry(1.0, 0.8, 4), darkRoof);
-                roof.position.y = 1.4;
-                roof.rotation.y = Math.PI / 4;
-                const chimney = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.6, 0.2), stoneMat);
-                chimney.position.set(0.4, 1.5, 0);
-                wall.castShadow = true; roof.castShadow = true; chimney.castShadow = true;
-                g.add(wall, roof, chimney);
-            } else if (type === 'apartment') {
-                const wall = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.8, 1.5), whiteMat);
-                wall.position.y = 0.9;
-                const roof = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.1, 1.6), darkRoof);
-                roof.position.y = 1.85;
-                wall.castShadow = true; roof.castShadow = true;
-                g.add(wall, roof);
-            } else if (type === 'skyscraper') {
-                const wall = new THREE.Mesh(new THREE.BoxGeometry(1.6, 3.5, 1.6), new THREE.MeshStandardMaterial({ color: 0x94a3b8, metalness: 0.6 }));
-                wall.position.y = 1.75;
-                wall.castShadow = true;
-                g.add(wall);
-            } else if (type === 'farm') {
-                const dirt = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.05, 1.6), new THREE.MeshStandardMaterial({ color: 0x3f2e21 }));
-                dirt.position.y = 0.025;
-                g.add(dirt);
-                for (let i = 0; i < 4; i++) {
-                    const wheat = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.4), new THREE.MeshStandardMaterial({ color: 0xeab308 }));
-                    wheat.position.set((Math.random() - 0.5) * 1.2, 0.2, (Math.random() - 0.5) * 1.2);
-                    g.add(wheat);
-                }
-            } else if (type === 'lumber_camp') {
-                const log = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 1.0), woodMat);
-                log.rotation.z = Math.PI / 2;
-                log.position.y = 0.15;
-                const axe = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.4, 0.1), stoneMat);
-                axe.position.set(0, 0.4, 0);
-                g.add(log, axe);
-            } else if (type === 'quarry' || type === 'forge') {
-                const pit = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.4, 1.4), stoneMat);
-                pit.position.y = 0.2;
-                g.add(pit);
-            } else if (type === 'storage_house') {
-                const wall = new THREE.Mesh(new THREE.BoxGeometry(1.4, 1.2, 1.4), woodMat);
+                dock.castShadow = true; hut.castShadow = true; roof.castShadow = true;
+                g.add(dock, hut, roof);
+            } else if (type === 'granary' || type === 'bakery') {
+                const wall = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.6, 1.2, 8), stoneMat);
                 wall.position.y = 0.6;
-                const roof = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.2, 1.5), darkRoof);
-                roof.position.y = 1.3;
+                const roof = new THREE.Mesh(new THREE.ConeGeometry(0.7, 0.6, 8), roofMat);
+                roof.position.y = 1.5;
                 wall.castShadow = true; roof.castShadow = true;
                 g.add(wall, roof);
-            } else if (type === 'watchtower') {
-                const base = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.6, 1.8, 4), stoneMat);
-                base.position.y = 0.9;
-                const top = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.3, 1.0), woodMat);
-                top.position.y = 1.95;
-                base.castShadow = true; top.castShadow = true;
-                g.add(base, top);
-            } else {
-                // Fallback for well, market, lantern etc
-                const w = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.8, 0.8), woodMat);
-                w.position.y = 0.4;
-                g.add(w);
-            }
+            } else if (type === 'greenhouse') {
+                const glassMat = new THREE.MeshStandardMaterial({color: 0xa5f3fc, transparent: true, opacity: 0.6, roughness: 0.1});
+                const base = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.2, 1.4), stoneMat);
+                base.position.y = 0.1;
+                const glass = new THREE.Mesh(new THREE.BoxGeometry(1.3, 1.0, 1.3), glassMat);
+                glass.position.y = 0.7;
+
+                const frameMat = new THREE.MeshStandardMaterial({color: 0x94a3b8});
+                const frame1 = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.05, 1.4), frameMat);
+                frame1.position.y = 1.2;
+                const frame2 = new THREE.Mesh(new THREE.BoxGeometry(0.05, 1.0, 1.4), frameMat);
+                frame2.position.set(0, 0.7, 0);
+
+                base.castShadow = true;
+                g.add(base, glass, frame1, frame2);
+            } else if (type === 'academy' || type === 'synth_core') {
+                const base = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.4, 1.6), whiteMat);
+                base.position.y = 0.2;
+                const body = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.6, 1.2, 6), new THREE.MeshStandardMaterial({color: 0x64748b}));
+                body.position.y = 1.0;
+                const dome = new THREE.Mesh(new THREE.SphereGeometry(0.6, 8, 8, 0, Math.PI * 2, 0, Math.PI / 2), new THREE.MeshStandardMaterial({color: 0x38bdf8}));
+                dome.position.y = 1.6;
+
+                crystal = new THREE.Mesh(new THREE.OctahedronGeometry(0.3, 0), new THREE.MeshStandardMaterial({color: 0x22d3ee, emissive: 0x06b6d4, emissiveIntensity: 0.5}));
+                crystal.position.y = 2.4;
+
+                base.castShadow = true; body.castShadow = true;
+                g.add(base, body, dome, crystal);
 
             g.position.set(tile.wx, tile.height, tile.wz);
             worldGroup.add(g);
@@ -1307,6 +1012,7 @@
                 stateLabel: 'Erkundet',
                 home: null, workplace: null,
                 payload: null, // for carrying resources
+                path: [], pathIndex: 0,
                 name: 'T-' + Math.floor(Math.random() * 9999)
             };
             g.userData.thronglet = th;
@@ -1504,6 +1210,7 @@
             }
         }
 
+
         function updateThronglets(dt) {
             assignJobsAndHomes();
 
@@ -1525,53 +1232,69 @@
                     th.thirst = Math.min(100, th.thirst + 45);
                 }
 
-                // Night behavior: 80% go home and sleep, 20% stay active (or if they are guards, they stay active)
-                if (state.isNight) {
-                    const isGuard = th.workplace && BUILDINGS[th.workplace.type].name === 'Wachturm';
-                    if (!isGuard) {
-                        // Deterministic way to decide if this thronglet is a night owl (20%)
-                        const isNightOwl = (parseInt(th.name.replace('T-', '')) % 10) < 2;
+                const setTarget = (wx, wz, label, nodeTarget = null) => {
+                    th.stateLabel = label;
+                    th.targetNode = nodeTarget;
+                    const curTile = getTileAtWorld(th.mesh.position.x, th.mesh.position.z);
+                    const targetTile = getTileAtWorld(wx, wz);
+                    if (curTile && targetTile) {
+                        const newPath = findPath(curTile.gx, curTile.gz, targetTile.gx, targetTile.gz);
+                        if (newPath && newPath.length > 0) {
+                            th.path = newPath;
+                            th.pathIndex = 0;
+                            const nextT = th.path[0];
+                            th.targetPos = new THREE.Vector3(nextT.wx, nextT.hasBridge ? 0.62 : nextT.height, nextT.wz);
+                            return;
+                        }
+                    }
+                    th.path = [];
+                    th.targetPos = new THREE.Vector3(wx, targetTile ? (targetTile.hasBridge ? 0.62 : targetTile.height) : 0.6, wz);
+                };
 
+                // Night behavior
+                let sleeping = false;
+                if (state.isNight) {
+                    const isGuard = th.workplace && BUILDINGS[th.workplace.type] && BUILDINGS[th.workplace.type].name === 'Wachturm';
+                    if (!isGuard) {
+                        const isNightOwl = (parseInt(th.name.replace('T-', '')) % 10) < 2;
                         if (!isNightOwl) {
                             if (th.home) {
-                                th.targetPos = new THREE.Vector3(th.home.tile.wx, th.home.tile.height, th.home.tile.wz);
-                                th.stateLabel = 'Geht schlafen';
-
-                                const dist = Math.hypot(th.targetPos.x - th.mesh.position.x, th.targetPos.z - th.mesh.position.z);
-                                if (dist < 0.5) {
+                                const distHome = Math.hypot(th.home.tile.wx - th.mesh.position.x, th.home.tile.wz - th.mesh.position.z);
+                                if (distHome < 0.6) {
                                     th.stateLabel = '💤 Schläft';
-                                    th.health = Math.min(100, th.health + dt * 2.0); // heal while sleeping
-                                    continue; // Skip further logic while sleeping
+                                    th.health = Math.min(100, th.health + dt * 2.0);
+                                    th.targetPos = null;
+                                    th.path = [];
+                                    sleeping = true;
+                                } else if (!th.targetPos || !th.stateLabel.includes('Geht schlafen')) {
+                                    setTarget(th.home.tile.wx, th.home.tile.wz, 'Geht schlafen');
                                 }
                             } else {
                                 th.stateLabel = '💤 Schläft im Freien';
-                                continue;
+                                sleeping = true;
                             }
                         }
                     }
                 }
 
+                if (sleeping) continue;
+
                 // AI Logic (Work, Deliver, Wander)
                 if (!th.targetPos || th.actionTimer <= 0) {
                     th.actionTimer = 2.0 + Math.random() * 3;
 
-                    if (th.payload) {
-                        // Go deliver to storage or town center
-                        let storage = state.buildings.find(b => BUILDINGS[b.type].name === 'Lagerhaus');
-                        // if no storage, deliver to center
+                    if (th.payload && th.payload.amount > 0) {
+                        // Go deliver
+                        let storage = state.buildings.find(b => BUILDINGS[b.type] && BUILDINGS[b.type].name === 'Lagerhaus');
                         if (storage) {
-                             th.targetPos = new THREE.Vector3(storage.tile.wx, storage.tile.height, storage.tile.wz);
-                             th.stateLabel = 'Bringt ' + th.payload.type + ' ins Lager';
+                             setTarget(storage.tile.wx, storage.tile.wz, 'Bringt ' + th.payload.type + ' ins Lager');
                         } else {
                              const centerTile = state.tiles[Math.floor(GRID_SIZE/2)][Math.floor(GRID_SIZE/2)];
-                             th.targetPos = new THREE.Vector3(centerTile.wx, centerTile.height, centerTile.wz);
-                             th.stateLabel = 'Bringt ' + th.payload.type + ' zum Zentrum';
+                             setTarget(centerTile.wx, centerTile.wz, 'Bringt ' + th.payload.type + ' zum Zentrum');
                         }
-
                     } else if (th.workplace) {
                         const wDef = BUILDINGS[th.workplace.type];
-                        if (wDef.name === 'Wachturm') {
-                            // Find nearest wolf
+                        if (wDef && wDef.name === 'Wachturm') {
                             let nearestWolf = null;
                             let minDist = Infinity;
                             state.wolves.forEach(wolf => {
@@ -1583,240 +1306,171 @@
                             });
 
                             if (nearestWolf) {
-                                th.targetNode = nearestWolf; // hack: use targetNode for wolf
-                                th.targetPos = new THREE.Vector3(nearestWolf.mesh.position.x, nearestWolf.mesh.position.y, nearestWolf.mesh.position.z);
-                                th.stateLabel = 'Bekämpft Wolf';
+                                setTarget(nearestWolf.mesh.position.x, nearestWolf.mesh.position.z, 'Bekämpft Wolf', nearestWolf);
                             } else {
-                                // Patrol around watchtower
-                                th.targetNode = null;
-                                th.targetPos = new THREE.Vector3(
-                                    th.workplace.tile.wx + (Math.random() - 0.5) * 8,
-                                    th.workplace.tile.height,
-                                    th.workplace.tile.wz + (Math.random() - 0.5) * 8
-                                );
-                                th.stateLabel = 'Patrouilliert';
+                                const px = th.workplace.tile.wx + (Math.random() - 0.5) * 8;
+                                const pz = th.workplace.tile.wz + (Math.random() - 0.5) * 8;
+                                setTarget(px, pz, 'Patrouilliert');
                             }
-                        } else if (wDef.name === 'Krankenhaus') {
-                            th.targetPos = new THREE.Vector3(th.workplace.tile.wx, th.workplace.tile.height, th.workplace.tile.wz);
-                            th.stateLabel = 'Arbeitet im Krankenhaus';
+                        } else if (wDef && wDef.name === 'Krankenhaus') {
+                            setTarget(th.workplace.tile.wx, th.workplace.tile.wz, 'Arbeitet im Krankenhaus');
                         } else {
-                            // Find nearest resource node matching job
                             let targetResType = null;
-                            if (wDef.name === 'Holzfäller') targetResType = 'forest';
-                            if (wDef.name === 'Steinmine') targetResType = 'stone';
-                            if (wDef.name === 'Eisenmine') targetResType = 'iron';
-                            if (wDef.name === 'Fischerhütte') th.targetPos = new THREE.Vector3(th.workplace.tile.wx, th.workplace.tile.height, th.workplace.tile.wz);
+                            if (wDef && wDef.name === 'Holzfäller') targetResType = 'forest';
+                            if (wDef && wDef.name === 'Steinmine') targetResType = 'stone';
+                            if (wDef && wDef.name === 'Eisenmine') targetResType = 'iron';
 
                             if (targetResType) {
                                 const nodes = state.resourceNodes.filter(n => n.resType === targetResType && n.amount > 0);
                                 if (nodes.length > 0) {
-                                    // Nearest
                                     nodes.sort((a,b) => Math.hypot(a.tile.wx - th.mesh.position.x, a.tile.wz - th.mesh.position.z) - Math.hypot(b.tile.wx - th.mesh.position.x, b.tile.wz - th.mesh.position.z));
-                                    th.targetNode = nodes[0];
-                                    th.targetPos = new THREE.Vector3(th.targetNode.tile.wx, th.targetNode.tile.height, th.targetNode.tile.wz);
-                                    th.stateLabel = 'Sammelt ' + targetResType;
+                                    setTarget(nodes[0].tile.wx, nodes[0].tile.wz, 'Sammelt ' + targetResType, nodes[0]);
                                 } else {
-                                    th.targetPos = new THREE.Vector3(th.workplace.tile.wx, th.workplace.tile.height, th.workplace.tile.wz);
-                                    th.stateLabel = 'Keine Ressourcen zu abbauen';
+                                    setTarget(th.workplace.tile.wx, th.workplace.tile.wz, 'Wartet auf ' + targetResType);
                                 }
+                            } else if (wDef && (wDef.name === 'Ackerfeld' || wDef.name === 'Fischerhütte')) {
+                                setTarget(th.workplace.tile.wx, th.workplace.tile.wz, 'Arbeitet');
+                            } else {
+                                setTarget(th.workplace.tile.wx, th.workplace.tile.wz, 'Arbeitet');
                             }
+                        }
+                    } else if (state.resourceNodes.length > 0) {
+                        // UNEMPLOYED gathering! Early game resource gathering
+                        // Prefer forest > stone > food
+                        let targetRes = null;
+                        if (state.resources.wood < 60) targetRes = 'forest';
+                        else if (state.resources.stone < 40) targetRes = 'stone';
+                        else if (state.resources.food < 60) targetRes = 'berry';
+                        else targetRes = ['forest', 'stone', 'berry'][Math.floor(Math.random() * 3)];
 
-                            if (wDef.name === 'Ackerfeld') {
-                                th.targetPos = new THREE.Vector3(th.workplace.tile.wx, th.workplace.tile.height, th.workplace.tile.wz);
-                                th.stateLabel = 'Bestellt Feld';
-                            }
-                        }
-                    } else if (state.resourceNodes.length > 0 && Math.random() < 0.3) {
-                        const node = state.resourceNodes[Math.floor(Math.random() * state.resourceNodes.length)];
-                        th.targetPos = new THREE.Vector3(node.tile.wx, node.tile.height, node.tile.wz);
-                        th.targetNode = node;
-                        th.stateLabel = 'Sammelt (' + node.label + ')';
-                    } else {
-                        // Wander
-                        const candidates = [];
-                        for (let gx = 0; gx < GRID_SIZE; gx++) {
-                            for (let gz = 0; gz < GRID_SIZE; gz++) {
-                                const t = state.tiles[gx][gz];
-                                if (t.type !== 'water' || t.hasBridge) {
-                                    candidates.push(t);
+                        const nodes = state.resourceNodes.filter(n => n.resType === targetRes && n.amount > 0);
+                        if (nodes.length > 0) {
+                            nodes.sort((a,b) => Math.hypot(a.tile.wx - th.mesh.position.x, a.tile.wz - th.mesh.position.z) - Math.hypot(b.tile.wx - th.mesh.position.x, b.tile.wz - th.mesh.position.z));
+                            setTarget(nodes[0].tile.wx, nodes[0].tile.wz, 'Sammelt ' + targetRes, nodes[0]);
+                        } else {
+                            // wander
+                            const candidates = [];
+                            for (let gx = 0; gx < GRID_SIZE; gx++) {
+                                for (let gz = 0; gz < GRID_SIZE; gz++) {
+                                    const t = state.tiles[gx][gz];
+                                    if (t.type !== 'water' || t.hasBridge) candidates.push(t);
                                 }
                             }
-                        }
-                        const pick = candidates[Math.floor(Math.random() * candidates.length)];
-                        if (pick) {
-                            th.targetPos = new THREE.Vector3(pick.wx, pick.hasBridge ? 0.62 : pick.height, pick.wz);
-                            th.targetNode = null;
-                            th.stateLabel = pick.roadTier > 0 ? 'Wandert auf Straße' : 'Erkundet';
+                            const pick = candidates[Math.floor(Math.random() * candidates.length)];
+                            if (pick) setTarget(pick.wx, pick.wz, pick.roadTier > 0 ? 'Wandert auf Straße' : 'Erkundet');
                         }
                     }
                 }
 
                 th.actionTimer -= dt;
 
-                // Move and interact
+                // Move logic along path or to targetPos directly
                 if (th.targetPos) {
                     const dx = th.targetPos.x - th.mesh.position.x;
                     const dz = th.targetPos.z - th.mesh.position.z;
                     const dist = Math.hypot(dx, dz);
                     const curTile = getTileAtWorld(th.mesh.position.x, th.mesh.position.z);
-                    const roadBoost = curTile ? (curTile.roadTier === 3 ? 1.85 : curTile.roadTier === 2 ? 1.5 : curTile.roadTier === 1 ? 1.25 : 1.0) : 1.0;
+                    const roadBoost = curTile ? (curTile.roadTier === 4 ? 2.5 : curTile.roadTier === 3 ? 1.85 : curTile.roadTier === 2 ? 1.5 : curTile.roadTier === 1 ? 1.25 : 1.0) : 1.0;
 
                     if (dist > 0.25) {
                         const speed = 1.65 * roadBoost * state.weather.speedMod;
                         const nextX = th.mesh.position.x + (dx / dist) * speed * dt;
                         const nextZ = th.mesh.position.z + (dz / dist) * speed * dt;
-                        const nextTile = getTileAtWorld(nextX, nextZ);
 
-                        if (nextTile && (nextTile.type !== 'water' || nextTile.hasBridge)) {
-                            th.mesh.position.x = nextX;
-                            th.mesh.position.z = nextZ;
-                            const baseH = nextTile.hasBridge ? 0.62 : nextTile.height;
-                            th.mesh.position.y = baseH + Math.abs(Math.sin(performance.now() * 0.01)) * 0.12;
-
-                            // Rotate towards movement
-                            th.mesh.lookAt(th.mesh.position.x + dx, th.mesh.position.y, th.mesh.position.z + dz);
-                        } else {
-                            th.targetPos = null;
-                        }
+                        th.mesh.position.x = nextX;
+                        th.mesh.position.z = nextZ;
+                        th.mesh.position.y = (curTile && curTile.hasBridge) ? 0.62 : (curTile ? curTile.height : 0.6) + Math.abs(Math.sin(performance.now() * 0.01)) * 0.12;
+                        th.mesh.lookAt(th.mesh.position.x + dx, th.mesh.position.y, th.mesh.position.z + dz);
                     } else {
-                        // Reached target
-
-                        if (th.payload) {
-                            // Deliver
-                            if (th.payload.type === 'wood') state.resources.wood += th.payload.amount;
-                            if (th.payload.type === 'stone') state.resources.stone += th.payload.amount;
-                            if (th.payload.type === 'iron') state.resources.iron += th.payload.amount;
-                            if (th.payload.type === 'food') state.resources.food += th.payload.amount;
-                            th.payload = null;
-                            th.targetPos = null;
-                        } else if (th.targetNode && th.targetNode.health !== undefined) {
-                            // Combat with wolf
-                            const wolf = th.targetNode;
-                            wolf.health -= dt * 25; // Guard damage
-                            th.health -= dt * 5;    // Take some damage back
-                            if (wolf.health <= 0) {
-                                th.targetNode = null;
-                                th.actionTimer = 0;
-                            }
-                        } else if (th.targetNode && th.targetNode.amount > 0) {
-                            const harvest = dt * 3.2;
-                            th.targetNode.isBeingHarvested = true;
-                            th.targetNode.amount = Math.max(0, th.targetNode.amount - harvest);
-
-                            // Instead of instantly adding to global resources, they put it in their payload
-                            let payloadType = null;
-                            if (th.targetNode.resType === 'forest') payloadType = 'wood';
-                            if (th.targetNode.resType === 'stone') payloadType = 'stone';
-                            if (th.targetNode.resType === 'iron') payloadType = 'iron';
-                            if (th.targetNode.resType === 'berry') payloadType = 'food';
-
-                            if (payloadType) {
-                                if (!th.payload) th.payload = { type: payloadType, amount: 0 };
-                                th.payload.amount += harvest * 0.5; // Harvest efficiency
-                            }
-
-                            const scale = Math.max(0.01, th.targetNode.amount / th.targetNode.maxAmount);
-                            th.targetNode.mesh.scale.set(scale, scale, scale);
-
-                            if (th.targetNode.amount <= 0) {
-                                removeResourceNode(th.targetNode);
-                                th.targetNode = null;
+                        // Reached current sub-target
+                        if (th.path && th.pathIndex < th.path.length - 1) {
+                            th.pathIndex++;
+                            const nextT = th.path[th.pathIndex];
+                            th.targetPos.set(nextT.wx, nextT.hasBridge ? 0.62 : nextT.height, nextT.wz);
+                        } else {
+                            // Reached final target
+                            if (th.payload && th.payload.amount > 0 && th.stateLabel.includes('Bringt')) {
+                                // Deliver
+                                if (th.payload.type === 'wood') state.resources.wood += th.payload.amount;
+                                if (th.payload.type === 'stone') state.resources.stone += th.payload.amount;
+                                if (th.payload.type === 'iron') state.resources.iron += th.payload.amount;
+                                if (th.payload.type === 'food') state.resources.food += th.payload.amount;
+                                th.payload = null;
                                 th.targetPos = null;
-                            }
+                                th.path = [];
+                                th.actionTimer = 0;
+                            } else if (th.targetNode && th.targetNode.health !== undefined) {
+                                // Combat with wolf
+                                const wolf = th.targetNode;
+                                wolf.health -= dt * 25;
+                                th.health -= dt * 5;
+                                if (wolf.health <= 0) {
+                                    th.targetNode = null;
+                                    th.targetPos = null;
+                                    th.path = [];
+                                    th.actionTimer = 0;
+                                }
+                            } else if (th.targetNode && th.targetNode.amount > 0) {
+                                // Harvest
+                                const harvest = dt * 3.2;
+                                th.targetNode.isBeingHarvested = true;
+                                th.targetNode.amount = Math.max(0, th.targetNode.amount - harvest);
 
-                            // If payload full (e.g. > 10 units), go deliver
-                            if (th.payload && th.payload.amount > 10) {
-                                th.targetNode = null;
-                                th.actionTimer = 0; // Force retarget
-                            }
-                        } else if (th.workplace && !th.targetNode) {
-                             const wDef = BUILDINGS[th.workplace.type];
-                             if (wDef.name === 'Ackerfeld' || wDef.name === 'Fischerhütte') {
-                                 // Passive farming/fishing
-                                 if (!th.payload) th.payload = { type: 'food', amount: 0 };
-                                 th.payload.amount += dt * 0.3;
-                                 if (th.payload.amount > 15) {
-                                     th.actionTimer = 0; // Force deliver
+                                let payloadType = null;
+                                if (th.targetNode.resType === 'forest') payloadType = 'wood';
+                                if (th.targetNode.resType === 'stone') payloadType = 'stone';
+                                if (th.targetNode.resType === 'iron') payloadType = 'iron';
+                                if (th.targetNode.resType === 'berry') payloadType = 'food';
+
+                                if (payloadType) {
+                                    if (!th.payload) th.payload = { type: payloadType, amount: 0 };
+                                    th.payload.amount += harvest * 0.5;
+                                }
+
+                                const scale = Math.max(0.01, th.targetNode.amount / th.targetNode.maxAmount);
+                                th.targetNode.mesh.scale.set(scale, scale, scale);
+
+                                if (th.targetNode.amount <= 0) {
+                                    removeResourceNode(th.targetNode);
+                                    th.targetNode = null;
+                                    th.targetPos = null;
+                                    th.path = [];
+                                }
+
+                                if (th.payload && th.payload.amount >= 15) {
+                                    th.targetNode = null;
+                                    th.actionTimer = 0;
+                                }
+                            } else if (th.workplace && !th.targetNode) {
+                                 const wDef = BUILDINGS[th.workplace.type];
+                                 if (wDef && (wDef.name === 'Ackerfeld' || wDef.name === 'Fischerhütte')) {
+                                     if (!th.payload) th.payload = { type: 'food', amount: 0 };
+                                     th.payload.amount += dt * 0.5; // faster farming since we carry it now
+                                     if (th.payload.amount >= 15) {
+                                         th.actionTimer = 0;
+                                         th.targetPos = null;
+                                         th.path = [];
+                                     }
+                                 } else if (wDef && wDef.name === 'Krankenhaus') {
+                                     // Heal others or self
+                                     th.health = Math.min(100, th.health + dt * 2.0);
+                                     state.thronglets.forEach(t => {
+                                         if (t.health < 100 && Math.hypot(t.mesh.position.x - th.mesh.position.x, t.mesh.position.z - th.mesh.position.z) < 5) {
+                                             t.health = Math.min(100, t.health + dt * 1.5);
+                                         }
+                                     });
                                  }
-                             }
+                            } else {
+                                th.targetPos = null;
+                                th.path = [];
+                            }
                         }
                     }
                 }
             }
         }
-    </script>
 
-    <script>
-
-        let isTouching = false;
-        let initialPinchDist = 0;
-        let initialPinchAngle = 0;
-
-        function getPinchDist(e) {
-            return Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
-        }
-
-        function getPinchAngle(e) {
-            return Math.atan2(e.touches[1].clientY - e.touches[0].clientY, e.touches[1].clientX - e.touches[0].clientX);
-        }
-
-        function onTouchStart(e) {
-            if (e.touches.length === 1) {
-                // Simulate pointer down for interaction/dragging
-                const touch = e.touches[0];
-                e.clientX = touch.clientX;
-                e.clientY = touch.clientY;
-                e.button = 0;
-                onPointerDown(e);
-            } else if (e.touches.length === 2) {
-                e.preventDefault();
-                initialPinchDist = getPinchDist(e);
-                initialPinchAngle = getPinchAngle(e);
-                isDraggingCamera = false; // Stop 1-finger drag
-            }
-        }
-
-        function onTouchMove(e) {
-            if (e.touches.length === 1) {
-                // Simulate pointer move
-                const touch = e.touches[0];
-                e.clientX = touch.clientX;
-                e.clientY = touch.clientY;
-                onPointerMove(e);
-            } else if (e.touches.length === 2) {
-                e.preventDefault();
-                const dist = getPinchDist(e);
-                const angle = getPinchAngle(e);
-
-                const distDelta = dist - initialPinchDist;
-                const angleDelta = angle - initialPinchAngle;
-
-                // Zoom
-                camDistance = Math.max(14, Math.min(54, camDistance - distDelta * 0.1));
-
-                // Rotate
-                camAngle -= angleDelta * 0.8;
-
-                updateCameraPosition();
-
-                initialPinchDist = dist;
-                initialPinchAngle = angle;
-            }
-        }
-
-        function onTouchEnd(e) {
-            if (e.touches.length === 0) {
-                // Let pointerUp handle the click if it was a quick tap
-                const touch = e.changedTouches[0];
-                e.clientX = touch.clientX;
-                e.clientY = touch.clientY;
-                e.button = 0;
-                onPointerUp(e);
-            }
-        }
-
-        function getPointerIntersection(e) {
-            const rect = renderer.domElement.getBoundingClientRect();
+        function getPointerIntersection(e) {const rect = renderer.domElement.getBoundingClientRect();
             mouseVec.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
             mouseVec.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
             raycaster.setFromCamera(mouseVec, camera);
@@ -1885,8 +1539,28 @@
             if (isDraggingCamera && !state.draggedThronglet) {
                 const dx = e.clientX - prevPointer.x;
                 const dy = e.clientY - prevPointer.y;
-                camAngle -= dx * 0.007;
-                camPitch = Math.max(0.32, Math.min(1.25, camPitch + dy * 0.006));
+
+                // If it is touch, we want to PAN the camera target
+                if (e.pointerType === 'touch' || (e.touches && e.touches.length === 1)) {
+                     // Pan relative to camera angle
+                     const panSpeed = 0.05;
+                     const rightX = Math.sin(camAngle - Math.PI/2);
+                     const rightZ = Math.cos(camAngle - Math.PI/2);
+                     const fwdX = Math.sin(camAngle);
+                     const fwdZ = Math.cos(camAngle);
+
+                     camTarget.x -= (rightX * dx + fwdX * dy) * panSpeed;
+                     camTarget.z -= (rightZ * dx + fwdZ * dy) * panSpeed;
+
+                     // clamp target
+                     const half = (GRID_SIZE * TILE_SIZE) / 2;
+                     camTarget.x = Math.max(-half, Math.min(half, camTarget.x));
+                     camTarget.z = Math.max(-half, Math.min(half, camTarget.z));
+                } else {
+                    // Mouse right click -> Rotate
+                    camAngle -= dx * 0.007;
+                    camPitch = Math.max(0.32, Math.min(1.25, camPitch + dy * 0.006));
+                }
                 updateCameraPosition();
                 prevPointer = { x: e.clientX, y: e.clientY };
             }
@@ -1932,6 +1606,8 @@
             if (tool === 'grab') {
                 if (tile.building) inspectEntity(tile.building);
                 else if (tile.resourceNode) inspectEntity(tile.resourceNode);
+                else if (tile.roadTier) inspectEntity(tile);
+                else closeInspector();
                 return;
             }
             if (tool === 'bless') {
@@ -2058,6 +1734,10 @@
                         : '<span class="text-rose-400 font-semibold">⚠ Keine Straße angrenzend (Inaktiv)</span>';
                     info += `<div>${connBadge}</div>`;
 
+                    if (def.desc) {
+                        info += `<div class="text-slate-400 mt-1 mb-2">${def.desc}</div>`;
+                    }
+
                     if (def.popCap) {
                          const residents = state.thronglets.filter(t => t.home === ent).length;
                          info += `<div>Bewohner: <span class="font-mono text-amber-300">${residents} / ${def.popCap}</span></div>`;
@@ -2076,11 +1756,12 @@
                                 <button onclick="upgradeEntity('${ent.tile.gx}', '${ent.tile.gz}')"
                                     class="w-full py-1.5 rounded-lg bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-xs font-semibold hover:bg-emerald-500/30 ${!techOk ? 'opacity-50 cursor-not-allowed' : ''}">
                                     Upgrade zu ${upgDef.name}
-                                    <div class="text-[9px] text-emerald-200/70 font-mono">${upgDef.cost.wood}H ${upgDef.cost.stone}S ${upgDef.cost.iron}E</div>
+                                    <div class="text-[9px] text-emerald-200/70 font-mono">${upgDef.cost.wood}H ${upgDef.cost.stone}S ${upgDef.cost.iron}E ${!techOk ? '(Fehlende Forschung)' : ''}</div>
                                 </button>
                             </div>
                         `;
                     }
+                }
                 }
                 body.innerHTML = info;
             }
@@ -2407,7 +2088,7 @@
 
         function startNewGame() {
             clearWorldEntities();
-            state.resources = { wood: 140, stone: 100, iron: 25, food: 160, water: 125, knowledge: 35 };
+            state.resources = { wood: 20, stone: 10, iron: 5, food: 50, water: 50, knowledge: 0 };
             state.popCap = 2;
             state.timeOfDay = 8.0;
             state.isNight = false;
